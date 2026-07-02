@@ -127,6 +127,8 @@ private:
     uint64_t drop_size_ = 0;
     int64_t last_pts_us_ = -1;
     int64_t last_frame_duration_us_ = 33333;
+    bool h265_init_logged_ = false;
+    bool h265_first_segment_logged_ = false;
 };
 
 }  // namespace media_internal

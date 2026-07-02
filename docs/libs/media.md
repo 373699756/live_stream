@@ -43,6 +43,8 @@ HTTP-FLV cached tag/bytes、HLS segment 数量、单 segment bytes 和 HLS cache
 数、socket send queue 或 WebRTC peer 数。内部 `FrameSubscribers`、`GopCache` 和
 `HlsMaker` 仍使用固定数组或明确 owner 的 buffer 作为硬边界，运行期上限只控制可用窗口
 和累计字节，避免热路径按帧分配策略对象。
+默认 HLS 单 segment 上限为 8MB、HLS 总缓存上限为 64MB，用于覆盖 1080p H.265
+主码流在 2 秒 segment 内的码率波动。
 
 `MediaStreamStats` 暴露当前缓存和触顶事件：`cached_bytes` 是主/子码流 GOP、共享
 live frame、HLS segment 和 FLV GOP cache 的总量近似值；`main_*`、`sub_*` 字段分别给出 GOP/HLS/FLV

@@ -1,6 +1,7 @@
 #include "hls_maker.h"
 
 #include "byte_writer.h"
+#include "infra/log.h"
 #include "media_codec.h"
 
 #include <algorithm>
@@ -26,11 +27,24 @@ constexpr uint8_t kTsStreamTypeH264 = 0x1b;
 constexpr size_t kMaxTsMediaSlices = 192;
 constexpr int64_t kNoKeyframeSegmentDurationMultiplier = 2;
 constexpr int64_t kNoKeyframeSegmentDurationFloorUs = 4000000;
+constexpr const char *kLogModuleName = "media";
 
 using byte_writer::AppendU16;
 using byte_writer::AppendU24;
 using byte_writer::AppendU32;
 using byte_writer::AppendU8;
+
+const char *StreamIdName(StreamId stream_id) {
+    switch (stream_id) {
+        case StreamId::kMain:
+            return "main";
+        case StreamId::kSub:
+            return "sub";
+        case StreamId::kSnapshot:
+            return "snapshot";
+    }
+    return "unknown";
+}
 
 uint8_t TsStreamType(Codec codec) {
     (void)codec;
@@ -751,6 +765,8 @@ void HlsMaker::Reset() {
     drop_size_ = 0;
     last_pts_us_ = -1;
     last_frame_duration_us_ = 33333;
+    h265_init_logged_ = false;
+    h265_first_segment_logged_ = false;
 }
 
 bool HlsMaker::IsPlaylistReady() const { return !segments_.empty(); }
@@ -985,6 +1001,15 @@ bool HlsMaker::AppendFrameToSegment(const FramePayload &payload,
             if (!media_codec::BuildH265HvccRecord(vps, sps, pps,
                                                   &hvcc_record,
                                                   &h265_codec_string)) {
+                Warn(kLogModuleName,
+                     "H265 HLS init failed stream=%s reason=hvcc "
+                     "vps=%zu sps=%zu pps=%zu units=%zu payload=%u "
+                     "width=%u height=%u pts=%lld dts=%lld",
+                     StreamIdName(frame.stream_id), vps.size(), sps.size(),
+                     pps.size(), payload.h265_units.unit_size,
+                     frame.payload.Size(), frame.width, frame.height,
+                     static_cast<long long>(frame.pts_us),
+                     static_cast<long long>(frame.dts_us));
                 return false;
             }
             const uint32_t width = Mp4TrackDimension(frame.width, 1920);
@@ -994,7 +1019,21 @@ bool HlsMaker::AppendFrameToSegment(const FramePayload &payload,
                                                        height));
             codec_string_ = h265_codec_string;
             if (!init_segment_.Valid()) {
+                Warn(kLogModuleName,
+                     "H265 HLS init failed stream=%s reason=init_segment "
+                     "codec=%s hvcc=%zu width=%u height=%u",
+                     StreamIdName(frame.stream_id), codec_string_.c_str(),
+                     hvcc_record.size(), width, height);
                 return false;
+            }
+            if (!h265_init_logged_) {
+                h265_init_logged_ = true;
+                Info(kLogModuleName,
+                     "H265 HLS init ready stream=%s codec=%s init=%u "
+                     "hvcc=%zu vps=%zu sps=%zu pps=%zu width=%u height=%u",
+                     StreamIdName(frame.stream_id), codec_string_.c_str(),
+                     init_segment_.Size(), hvcc_record.size(), vps.size(),
+                     sps.size(), pps.size(), width, height);
             }
         }
         const size_t extra_bytes =
@@ -1002,12 +1041,25 @@ bool HlsMaker::AppendFrameToSegment(const FramePayload &payload,
             media_codec::kMaxNalUnitsPerFrame * 4U;
         if (!EnsureSegmentCapacity(current_segment_, extra_bytes)) {
             ++drop_size_;
+            Warn(kLogModuleName,
+                 "H265 HLS sample dropped stream=%s reason=capacity "
+                 "segment=%u capacity=%u extra=%zu max=%u drops=%llu",
+                 StreamIdName(frame.stream_id), current_segment_.body.Size(),
+                 current_segment_.body.Capacity(), extra_bytes,
+                 options_.max_segment_bytes,
+                 static_cast<unsigned long long>(drop_size_));
             return false;
         }
         uint32_t sample_size = 0;
         if (!AppendH265Fmp4SamplePayload(payload.h265_units,
                                          current_segment_.body,
                                          sample_size)) {
+            Warn(kLogModuleName,
+                 "H265 HLS sample failed stream=%s units=%zu payload=%u "
+                 "segment=%u capacity=%u",
+                 StreamIdName(frame.stream_id), payload.h265_units.unit_size,
+                 frame.payload.Size(), current_segment_.body.Size(),
+                 current_segment_.body.Capacity());
             return false;
         }
         HlsFmp4Sample sample;
@@ -1154,6 +1206,12 @@ bool HlsMaker::PushFinalizedSegment() {
     RememberSegmentCapacity(current_segment_);
     if (current_segment_.format == HlsSegmentFormat::kFmp4) {
         if (!BuildFinalizedFmp4Segment(current_segment_, segment.body)) {
+            Warn(kLogModuleName,
+                 "H265 HLS segment failed reason=fmp4 sequence=%llu "
+                 "samples=%zu body=%u",
+                 static_cast<unsigned long long>(current_segment_.sequence),
+                 current_segment_.samples.size(),
+                 current_segment_.body.Size());
             return false;
         }
     } else {
@@ -1166,6 +1224,16 @@ bool HlsMaker::PushFinalizedSegment() {
     }
     segments_.push_back(segment);
     cached_bytes_ = AddHlsCachedBytes(cached_bytes_, segment_bytes);
+    if (segment.format == HlsSegmentFormat::kFmp4 &&
+        !h265_first_segment_logged_) {
+        h265_first_segment_logged_ = true;
+        Info(kLogModuleName,
+             "H265 HLS first segment ready sequence=%llu duration_us=%lld "
+             "bytes=%u samples=%zu cached=%u",
+             static_cast<unsigned long long>(segment.sequence),
+             static_cast<long long>(segment.duration_us), segment_bytes,
+             current_segment_.samples.size(), cached_bytes_);
+    }
     while (segments_.size() > options_.max_segments ||
            cached_bytes_ > options_.max_cached_bytes) {
         PopOldestSegment();

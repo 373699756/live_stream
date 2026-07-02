@@ -32,8 +32,8 @@ struct MediaCacheLimits {
     uint32_t max_flv_cached_tags = 128;
     uint32_t max_flv_cached_bytes = 4 * 1024 * 1024;
     uint32_t max_hls_segments = 9;
-    uint32_t max_hls_segment_bytes = 4 * 1024 * 1024;
-    uint32_t max_hls_cached_bytes = 32 * 1024 * 1024;
+    uint32_t max_hls_segment_bytes = 8 * 1024 * 1024;
+    uint32_t max_hls_cached_bytes = 64 * 1024 * 1024;
 };
 
 struct MediaStreamsOptions {
