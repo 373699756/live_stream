@@ -245,17 +245,20 @@ bool UdpSocket::SendToSlicesInLoop(SocketAddress address,
     msg.msg_iov = iov;
     msg.msg_iovlen = iov_size;
     const ssize_t ret = sendmsg(fd, &msg, 0);
-    if (ret < 0) {
-        const int error = errno;
-        Error(kModuleName,
-              "UDP send failed local=%s:%u peer=%s:%u errno=%d (%s)",
-              local_.ip.c_str(), static_cast<unsigned>(local_.port),
-              address.ip.c_str(), static_cast<unsigned>(address.port), error,
-              ErrnoText(error));
+    if (ret >= 0) {
+        socket_io_->AddUdpTx();
+        return true;
+    }
+    const int error = errno;
+    if (error == EAGAIN || error == EWOULDBLOCK) {
+        socket_io_->AddSendBusy();
         return false;
     }
-    socket_io_->AddUdpTx();
-    return true;
+    Error(kModuleName, "UDP send failed local=%s:%u peer=%s:%u errno=%d (%s)",
+          local_.ip.c_str(), static_cast<unsigned>(local_.port),
+          address.ip.c_str(), static_cast<unsigned>(address.port), error,
+          ErrnoText(error));
+    return false;
 }
 
 bool UdpSocket::SetPeer(SocketAddress peer) {

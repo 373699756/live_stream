@@ -11,6 +11,7 @@ namespace webrtc_internal {
 namespace {
 
 constexpr const char *kModuleName = "webrtc";
+constexpr uint32_t kWebrtcUdpSendBufferBytes = 4 * 1024 * 1024;
 
 }  // namespace
 
@@ -34,6 +35,9 @@ bool IceTransport::Start(ISocketIo *socket_io, event::Loop *socket_loop,
     UdpBindOptions options;
     options.address.ip = listen_ip.empty() ? "0.0.0.0" : listen_ip;
     options.address.port = port;
+    if (options.send_buffer_bytes == 0) {
+        options.send_buffer_bytes = kWebrtcUdpSendBufferBytes;
+    }
     UdpSocketId socket_id = socket_io->BindUdp(socket_loop, options,
                                             callbacks);
     if (socket_id == 0) {
