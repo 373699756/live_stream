@@ -1,7 +1,7 @@
 #include "subsystems/protocol_options.h"
 
 #include "infra/log.h"
-#include "subsystems/foundation_subsystem.h"
+#include "system/network.h"
 
 #include <cctype>
 #include <string>
@@ -76,9 +76,8 @@ bool IsUsableWebrtcPublicIp(const std::string &public_ip) {
     return octets[0] != 0 && octets[0] != 127;
 }
 
-std::string ResolveWebrtcPublicIp(
-    const AppConfig &app_config,
-    const ProtocolStartupRefs &refs) {
+std::string ResolveWebrtcPublicIp(const AppConfig &app_config,
+                                  INetwork *network) {
     if (!app_config.webrtc_enabled) {
         return app_config.webrtc_public_ip;
     }
@@ -92,10 +91,9 @@ std::string ResolveWebrtcPublicIp(
         return app_config.webrtc_public_ip;
     }
 
-    if (refs.device.network != nullptr) {
+    if (network != nullptr) {
         const NetInterfaceInfo interface_info =
-            refs.device.network->GetInterfaceInfo(
-                app_config.network_ifname);
+            network->GetInterfaceInfo(app_config.network_ifname);
         if (IsUsableWebrtcPublicIp(interface_info.static_ipv4.address)) {
             Info("app", "WebRTC public_ip auto resolved ifname=%s ip=%s",
                  app_config.network_ifname.c_str(),
@@ -145,13 +143,13 @@ RtspOptions BuildRtspOptions(const AppConfig &app_config) {
 }
 
 WebrtcOptions BuildWebrtcOptions(const AppConfig &app_config,
-                                 const ProtocolStartupRefs &refs) {
+                                 INetwork *network) {
     WebrtcOptions options;
     options.enabled = app_config.webrtc_enabled;
     options.local_port_base = app_config.webrtc_local_port_base;
     options.max_peers = app_config.webrtc_max_peers;
     options.prefer_tcp = app_config.webrtc_prefer_tcp;
-    options.public_ip = ResolveWebrtcPublicIp(app_config, refs);
+    options.public_ip = ResolveWebrtcPublicIp(app_config, network);
     if (options.enabled && options.public_ip.empty()) {
         Error("app",
               "WebRTC disabled: public_ip is not resolvable ifname=%s",

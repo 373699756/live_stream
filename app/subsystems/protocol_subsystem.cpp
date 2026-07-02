@@ -46,10 +46,6 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
         return true;
     }
 
-    ProtocolStartupRefs refs;
-    refs.device = device_refs;
-    refs.media = media_refs;
-
     if (!socket_callback_loop_) {
         socket_callback_loop_.reset(new event::Loop());
     }
@@ -74,21 +70,21 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
         Stop();
         return false;
     }
-    refs.socket_io = socket_io_.get();
-    refs.rtsp_loop = RequireSocketLoop(refs.socket_io, "rtsp");
-    refs.webrtc_loop = RequireSocketLoop(refs.socket_io, "webrtc");
-    refs.onvif_loop = RequireSocketLoop(refs.socket_io, "onvif");
-    refs.http_loop = RequireSocketLoop(refs.socket_io, "http");
-    if (refs.rtsp_loop == nullptr ||
-        refs.webrtc_loop == nullptr ||
-        refs.onvif_loop == nullptr ||
-        refs.http_loop == nullptr) {
+    ISocketIo *socket_io = socket_io_.get();
+    event::Loop *rtsp_loop = RequireSocketLoop(socket_io, "rtsp");
+    event::Loop *webrtc_loop = RequireSocketLoop(socket_io, "webrtc");
+    event::Loop *onvif_loop = RequireSocketLoop(socket_io, "onvif");
+    event::Loop *http_loop = RequireSocketLoop(socket_io, "http");
+    if (rtsp_loop == nullptr ||
+        webrtc_loop == nullptr ||
+        onvif_loop == nullptr ||
+        http_loop == nullptr) {
         Stop();
         return false;
     }
 
     const RtspOptions rtsp_options = BuildRtspOptions(app_config);
-    rtsp_ = CreateRtsp(rtsp_options, refs.rtsp_loop);
+    rtsp_ = CreateRtsp(rtsp_options, rtsp_loop);
     if (!rtsp_ || !rtsp_->Start()) {
         Error("app",
               "Start rtsp failed, continue without RTSP: "
@@ -99,9 +95,7 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
             rtsp_->Stop();
         }
         rtsp_.reset();
-        refs.rtsp = nullptr;
     } else {
-        refs.rtsp = rtsp_.get();
         if (!ServiceRegistry::RegisterRtsp(rtsp_.get())) {
             Error("app", "Register RTSP readonly service failed");
             Stop();
@@ -114,8 +108,8 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
     }
 
     const WebrtcOptions webrtc_options =
-        BuildWebrtcOptions(app_config, refs);
-    webrtc_ = CreateWebrtc(webrtc_options, refs.webrtc_loop);
+        BuildWebrtcOptions(app_config, device_refs.network);
+    webrtc_ = CreateWebrtc(webrtc_options, webrtc_loop);
     if (!webrtc_ || !webrtc_->Start()) {
         Error(
             "app",
@@ -127,9 +121,7 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
             webrtc_->Stop();
         }
         webrtc_.reset();
-        refs.webrtc = nullptr;
     } else {
-        refs.webrtc = webrtc_.get();
         if (!ServiceRegistry::RegisterWebrtc(webrtc_.get())) {
             Error("app", "Register WebRTC readonly service failed");
             Stop();
@@ -138,9 +130,9 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
     }
 
     const OnvifServerOptions onvif_options = BuildOnvifOptions(app_config);
-    onvif_ = CreateOnvifServer(onvif_options, refs.onvif_loop,
-                               refs.device.system, refs.device.time,
-                               refs.media.device);
+    onvif_ = CreateOnvifServer(onvif_options, onvif_loop,
+                               device_refs.system, device_refs.time,
+                               media_refs.device);
     if (!onvif_ || !onvif_->Start()) {
         Error("app",
               "Start onvif failed, continue without ONVIF: "
@@ -150,9 +142,7 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
             onvif_->Stop();
         }
         onvif_.reset();
-        refs.onvif = nullptr;
     } else {
-        refs.onvif = onvif_.get();
         if (!ServiceRegistry::RegisterOnvif(onvif_.get())) {
             Error("app", "Register ONVIF readonly service failed");
             Stop();
@@ -183,10 +173,10 @@ bool ProtocolSubsystem::Start(const AppConfig &app_config,
     }
 
     const HttpOptions http_options = BuildHttpOptions(app_config);
-    http_ = CreateHttp(http_options, refs.http_loop, refs.device.network,
-                       refs.device.time, refs.device.alarm,
-                       refs.device.upgrade, refs.device.system,
-                       refs.media.ai, refs.media.device, refs.webrtc);
+    http_ = CreateHttp(http_options, http_loop, device_refs.network,
+                       device_refs.time, device_refs.alarm,
+                       device_refs.upgrade, device_refs.system,
+                       media_refs.ai, media_refs.device, webrtc_.get());
     if (!http_ || !http_->Start()) {
         Error("app", "Start http failed: listen=%s:%u root=%s",
               app_config.listen_ip.c_str(),

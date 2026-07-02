@@ -149,13 +149,7 @@ ConfigCode ProtocolSubsystem::ApplyWebrtcConfigChange(
     if (webrtc_ == nullptr) {
         return RejectConfigApply(error, "webrtc unavailable");
     }
-    ProtocolStartupRefs refs;
-    refs.device.network = network_;
-    refs.socket_io = socket_io_.get();
-    refs.rtsp = rtsp_.get();
-    refs.onvif = onvif_.get();
-    refs.webrtc = webrtc_.get();
-    const WebrtcOptions options = BuildWebrtcOptions(next_config, refs);
+    const WebrtcOptions options = BuildWebrtcOptions(next_config, network_);
     if (!webrtc_->ApplyOptions(options)) {
         return RejectConfigApply(error, "apply webrtc config failed");
     }
