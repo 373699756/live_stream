@@ -8,13 +8,13 @@
 namespace live_stream {
 
 class IConfig;
-class IWebrtcReader;
 class MediaStreams;
+struct WebrtcStats;
 
 Json BuildMediaStreamResponse(StreamId stream_id,
                               IConfig *config,
                               MediaStreams *media_streams,
-                              IWebrtcReader *webrtc_reader);
+                              const WebrtcStats &webrtc_stats);
 Json BuildMediaCapabilitiesResponse(const MediaCapabilities &capabilities);
 
 }  // namespace live_stream

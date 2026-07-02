@@ -56,12 +56,16 @@ private:
         }
         Json root = Json::object();
         Json items = Json::array();
+        WebrtcStats webrtc_stats;
+        if (webrtc_reader_ != nullptr) {
+            webrtc_stats = webrtc_reader_->GetStats();
+        }
         items.push_back(BuildMediaStreamResponse(StreamId::kMain, config_,
                                                  media_streams_,
-                                                 webrtc_reader_));
+                                                 webrtc_stats));
         items.push_back(BuildMediaStreamResponse(StreamId::kSub, config_,
                                                  media_streams_,
-                                                 webrtc_reader_));
+                                                 webrtc_stats));
         root["items"] = items;
         return JsonResponse(200, root);
     }
@@ -106,9 +110,13 @@ private:
                 200, BuildMediaPreviewResponse(config_, rtsp_session_reader_,
                                                request, stream_id));
         }
+        WebrtcStats webrtc_stats;
+        if (webrtc_reader_ != nullptr) {
+            webrtc_stats = webrtc_reader_->GetStats();
+        }
         return JsonResponse(
             200, BuildMediaStreamResponse(stream_id, config_, media_streams_,
-                                          webrtc_reader_));
+                                          webrtc_stats));
     }
 
     HttpResponse HandleSessions(const HttpRequest &request) {

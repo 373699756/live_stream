@@ -224,20 +224,12 @@ Json ImageCapabilitiesToJson(const ImageCapabilities &capabilities) {
     return root;
 }
 
-bool IsWebrtcReady(IWebrtcReader *webrtc_reader) {
-    if (webrtc_reader == nullptr) {
-        return false;
-    }
-    const WebrtcStats stats = webrtc_reader->GetStats();
+bool IsWebrtcReady(const WebrtcStats &stats) {
     return stats.enabled && stats.signaling_ready && stats.ice_ready &&
            stats.dtls_ready && stats.srtp_ready;
 }
 
-bool IsWebrtcSupported(Codec codec, IWebrtcReader *webrtc_reader) {
-    if (webrtc_reader == nullptr) {
-        return false;
-    }
-    const WebrtcStats stats = webrtc_reader->GetStats();
+bool IsWebrtcSupported(Codec codec, const WebrtcStats &stats) {
     return stats.enabled && (codec == Codec::kH264 ||
                              codec == Codec::kH265);
 }
@@ -326,7 +318,7 @@ Json BuildMediaCapabilitiesResponse(const MediaCapabilities &capabilities) {
 Json BuildMediaStreamResponse(StreamId stream_id,
                               IConfig *config,
                               MediaStreams *media_streams,
-                              IWebrtcReader *webrtc_reader) {
+                              const WebrtcStats &webrtc_stats) {
     MediaStreamInfo stream_info;
     MediaStreamStats stats;
     bool media_stream_available = false;
@@ -350,11 +342,11 @@ Json BuildMediaStreamResponse(StreamId stream_id,
     root["mjpeg_supported"] = stream_info.mjpeg_supported;
     root["mjpeg_ready"] = stream_info.mjpeg_ready;
     const bool webrtc_supported =
-        IsWebrtcSupported(stream_info.codec, webrtc_reader);
+        IsWebrtcSupported(stream_info.codec, webrtc_stats);
     root["webrtc_supported"] = webrtc_supported;
     root["webrtc_ready"] =
         stream_info.running && stream_info.track_ready && webrtc_supported &&
-        IsWebrtcReady(webrtc_reader);
+        IsWebrtcReady(webrtc_stats);
     root["active_subscriptions"] = stats.active_subscriptions;
     root["preview_clients"] =
         stats.active_flv_clients + stats.active_mjpeg_clients;
