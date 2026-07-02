@@ -215,36 +215,11 @@ void HttpImpl::InitializeHandlers(INetwork *network,
     auth_ = Runtime::Auth();
     logger_ = Runtime::Logger();
     MediaStreams *media_streams = MediaSourceRegistry::Streams();
-    const HttpControlRefs control_refs = {
-        Runtime::Auth(),
-        Runtime::Logger(),
-        Runtime::Config(),
-        network,
-        time,
-        alarm,
-        upgrade,
-        system,
-        ai,
-        device,
-    };
-    const HttpMediaRefs media_refs = {
-        Runtime::Config(),
-        device,
-        media_streams,
-        ServiceRegistry::Rtsp(),
-        ServiceRegistry::Webrtc(),
-        ServiceRegistry::NetStat(),
-        webrtc,
-    };
-    const HttpStreamingRefs streaming_refs = {
-        device,
-        media_streams,
-        Runtime::EventCenter(),
-    };
     ConfigureCloseCallback(media_streams);
-    InitializeControlHandlers(control_refs);
-    InitializeMediaHandlers(media_refs);
-    InitializeStreamingHandler(streaming_refs);
+    InitializeControlHandlers(network, time, alarm, upgrade, system, ai,
+                              device);
+    InitializeMediaHandlers(device, media_streams, webrtc);
+    InitializeStreamingHandler(device, media_streams, Runtime::EventCenter());
     RegisterRoutes();
 }
 
@@ -265,37 +240,42 @@ void HttpImpl::ConfigureCloseCallback(MediaStreams *media_streams) {
     });
 }
 
-void HttpImpl::InitializeControlHandlers(
-    const HttpControlRefs &refs) {
+void HttpImpl::InitializeControlHandlers(INetwork *network,
+                                         ITime *time,
+                                         IAlarm *alarm,
+                                         IUpgrade *upgrade,
+                                         ISystem *system,
+                                         IAiReader *ai,
+                                         DeviceMedia *device) {
     handlers_.push_back(
-        MakeAuthHandler({this, refs.auth}));
+        MakeAuthHandler({this, Runtime::Auth()}));
     handlers_.push_back(
-        MakeConfigHandler({this, refs.config}));
+        MakeConfigHandler({this, Runtime::Config()}));
     handlers_.push_back(
-        MakeOperationsHandler({this, refs.logger}));
+        MakeOperationsHandler({this, Runtime::Logger()}));
     handlers_.push_back(
-        MakeNetworkHandler({this, refs.network}));
-    handlers_.push_back(MakeTimeHandler({this, refs.time}));
-    handlers_.push_back(MakeUpgradeHandler({this, refs.upgrade}));
+        MakeNetworkHandler({this, network}));
+    handlers_.push_back(MakeTimeHandler({this, time}));
+    handlers_.push_back(MakeUpgradeHandler({this, upgrade}));
     handlers_.push_back(MakeSystemHandler(
-        {this, refs.system, refs.time, refs.network, refs.alarm,
-         refs.upgrade, refs.ai, refs.device}));
-    handlers_.push_back(MakeAlarmHandler({this, refs.alarm}));
+        {this, system, time, network, alarm, upgrade, ai, device}));
+    handlers_.push_back(MakeAlarmHandler({this, alarm}));
     handlers_.push_back(
-        MakeAiHandler({this, refs.config, refs.ai, refs.device}));
+        MakeAiHandler({this, Runtime::Config(), ai, device}));
     handlers_.push_back(
-        MakeSnapshotHandler({this, refs.device}));
+        MakeSnapshotHandler({this, device}));
 }
 
-void HttpImpl::InitializeMediaHandlers(
-    const HttpMediaRefs &refs) {
+void HttpImpl::InitializeMediaHandlers(DeviceMedia *device,
+                                       MediaStreams *media_streams,
+                                       IWebrtc *webrtc) {
     handlers_.push_back(
-        MakeMediaHandler({this, refs.config, refs.device,
-                          refs.media_streams,
-                          refs.rtsp_session_reader,
-                          refs.webrtc_reader, refs.net_stat, this}));
+        MakeMediaHandler({this, Runtime::Config(), device, media_streams,
+                          ServiceRegistry::Rtsp(),
+                          ServiceRegistry::Webrtc(),
+                          ServiceRegistry::NetStat(), this}));
     const HttpMediaHandlerRefs http_media_handler_refs = {
-        this, refs.device, refs.media_streams, refs.webrtc};
+        this, device, media_streams, webrtc};
     const HttpMediaHandlerKind media_handlers[] = {
         HttpMediaHandlerKind::kHls,
         HttpMediaHandlerKind::kWebrtc,
@@ -306,11 +286,11 @@ void HttpImpl::InitializeMediaHandlers(
     }
 }
 
-void HttpImpl::InitializeStreamingHandler(
-    const HttpStreamingRefs &refs) {
+void HttpImpl::InitializeStreamingHandler(DeviceMedia *device,
+                                          MediaStreams *media_streams,
+                                          event::EventCenter *event) {
     streaming_handler_ = CreateStreamingHttpHandler(
-        {this, server_.get(), refs.device, refs.media_streams,
-         refs.event});
+        {this, server_.get(), device, media_streams, event});
 }
 
 void HttpImpl::RegisterRoutes() {

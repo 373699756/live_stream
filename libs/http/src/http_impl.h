@@ -23,39 +23,6 @@ namespace event {
 class EventCenter;
 }  // namespace event
 
-class IRtspSessionReader;
-class INetStat;
-class IWebrtcReader;
-
-struct HttpControlRefs {
-    IAuth *auth = nullptr;
-    ILogger *logger = nullptr;
-    IConfig *config = nullptr;
-    INetwork *network = nullptr;
-    ITime *time = nullptr;
-    IAlarm *alarm = nullptr;
-    IUpgrade *upgrade = nullptr;
-    ISystem *system = nullptr;
-    IAiReader *ai = nullptr;
-    DeviceMedia *device = nullptr;
-};
-
-struct HttpMediaRefs {
-    IConfig *config = nullptr;
-    DeviceMedia *device = nullptr;
-    MediaStreams *media_streams = nullptr;
-    IRtspSessionReader *rtsp_session_reader = nullptr;
-    IWebrtcReader *webrtc_reader = nullptr;
-    INetStat *net_stat = nullptr;
-    IWebrtc *webrtc = nullptr;
-};
-
-struct HttpStreamingRefs {
-    DeviceMedia *device = nullptr;
-    MediaStreams *media_streams = nullptr;
-    event::EventCenter *event = nullptr;
-};
-
 class HttpImpl : public IHttp,
                  public HttpAccess,
                  public HttpRequestHandler {
@@ -113,9 +80,19 @@ private:
                             DeviceMedia *device,
                             IWebrtc *webrtc);
     void ConfigureCloseCallback(MediaStreams *media_streams);
-    void InitializeControlHandlers(const HttpControlRefs &refs);
-    void InitializeMediaHandlers(const HttpMediaRefs &refs);
-    void InitializeStreamingHandler(const HttpStreamingRefs &refs);
+    void InitializeControlHandlers(INetwork *network,
+                                   ITime *time,
+                                   IAlarm *alarm,
+                                   IUpgrade *upgrade,
+                                   ISystem *system,
+                                   IAiReader *ai,
+                                   DeviceMedia *device);
+    void InitializeMediaHandlers(DeviceMedia *device,
+                                 MediaStreams *media_streams,
+                                 IWebrtc *webrtc);
+    void InitializeStreamingHandler(DeviceMedia *device,
+                                    MediaStreams *media_streams,
+                                    event::EventCenter *event);
     void RegisterRoutes();
     void StopInternal();
     void ReleaseInternal();
