@@ -72,9 +72,7 @@ function normalizeAiStatus(status: AiStatus): AiStatus {
             ...status.last_result,
             detections: status.last_result.detections ?? [],
         },
-        capabilities: normalizeAiCapabilities(
-            status.capabilities ?? mockAiCapabilities,
-        ),
+        capabilities: normalizeAiCapabilities(status.capabilities),
     };
 }
 
@@ -88,34 +86,45 @@ const kAiTaskNames: AiTaskName[] = [
 function normalizeAiTaskCapability(
     capability: Partial<AiTaskCapability> & { task: AiTaskName },
 ): AiTaskCapability {
-    const fallback = mockAiCapabilities.tasks.find(
-        (task) => task.task === capability.task,
-    );
     const requiresModel =
         capability.requires_model ??
         (capability.task === 'object_detection' ||
             capability.task === 'perimeter_detection');
     return {
-        ...(fallback ?? mockAiCapabilities.tasks[0]),
-        ...capability,
-        available: capability.available ?? true,
+        available: capability.available === true,
+        default_model_path: capability.default_model_path ?? '',
+        default_input_height: capability.default_input_height ?? 0,
+        default_input_width: capability.default_input_width ?? 0,
+        default_inference_interval_ms:
+            capability.default_inference_interval_ms ?? 0,
+        default_max_results: capability.default_max_results ?? 0,
+        default_confidence_threshold:
+            capability.default_confidence_threshold ?? 0,
+        max_confidence_threshold: capability.max_confidence_threshold ?? 0,
+        max_inference_interval_ms: capability.max_inference_interval_ms ?? 0,
+        max_perimeter_regions: capability.max_perimeter_regions ?? 0,
+        max_results: capability.max_results ?? 0,
+        min_confidence_threshold: capability.min_confidence_threshold ?? 0,
+        min_inference_interval_ms: capability.min_inference_interval_ms ?? 0,
+        min_results: capability.min_results ?? 0,
+        task: capability.task,
         requires_model: requiresModel,
         unavailable_reason: capability.unavailable_reason ?? '',
         supported_backends:
             capability.supported_backends?.length
                 ? capability.supported_backends
-                : ['hisi3516dv300_nnie'],
+                : [],
         supported_streams:
             capability.supported_streams?.length
                 ? capability.supported_streams
-                : ['sub', 'main'],
+                : [],
     };
 }
 
 function normalizeAiCapabilities(
-    capabilities: Partial<AiCapabilities>,
+    capabilities: Partial<AiCapabilities> | undefined,
 ): AiCapabilities {
-    const taskItems = capabilities.tasks ?? [];
+    const taskItems = capabilities?.tasks ?? [];
     const tasks = kAiTaskNames.map((taskName) => {
         const taskCapability = taskItems.find(
             (item) => item.task === taskName,
@@ -126,12 +135,12 @@ function normalizeAiCapabilities(
         });
     });
     return {
-        available:
-            capabilities.available ?? tasks.some((task) => task.available),
+        available: capabilities?.available === true,
         model_runtime_available:
-            capabilities.model_runtime_available ??
-            tasks.some((task) => task.available),
-        model_runtime_reason: capabilities.model_runtime_reason ?? '',
+            capabilities?.model_runtime_available === true,
+        model_runtime_reason:
+            capabilities?.model_runtime_reason ??
+            (capabilities ? '' : 'ai_capabilities_missing'),
         tasks,
     };
 }

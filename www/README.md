@@ -128,9 +128,10 @@ Frontend media DTO names are frozen as:
 - `MediaSessionInfo`
 - `WebrtcPeerInfo`
 
-`MediaStreamRuntime` includes stream availability, running state, codec,
-configured resolution, fps, bitrate, protocol support/ready fields,
-reader/client size, cached bytes, last DTS, and last reset reason.
+`MediaStreamRuntime` includes stream availability, running state, configured
+resolution, fps, bitrate, protocol support/ready fields, reader/client size,
+and cache counters. Playback metadata such as codec, codec generation, last DTS,
+and last reset reason is present only when the stream is available.
 `MediaPlaybackUrls` contains only backend-generated URLs. Live preview listens
 to `/api/events` for media status changes and keeps slow polling only as a
 fallback; automatic playback prefers WebRTC, HTTP-FLV, then MJPEG before HLS.

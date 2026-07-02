@@ -4,8 +4,8 @@ export interface MediaStreamInfo {
     stream: StreamName;
     available: boolean;
     running: boolean;
-    codec: string;
-    codec_generation: number;
+    codec?: string;
+    codec_generation?: number;
     track_ready: boolean;
     hls_supported: boolean;
     hls_ready: boolean;
@@ -20,8 +20,8 @@ export interface MediaStreamInfo {
     cached_frames: number;
     cached_bytes: number;
     hls_bytes: number;
-    last_dts: number;
-    last_reset_reason: string;
+    last_dts?: number;
+    last_reset_reason?: string;
     resolution?: string;
     fps?: number;
     bitrate_kbps?: number;

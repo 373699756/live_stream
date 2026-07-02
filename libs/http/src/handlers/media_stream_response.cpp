@@ -316,6 +316,28 @@ Json BuildMediaStreamResponse(StreamId stream_id,
     Json root = Json::object();
     root["stream"] = StreamIdToJsonString(stream_id);
     root["available"] = media_stream_available;
+    if (!media_stream_available) {
+        root["running"] = false;
+        root["track_ready"] = false;
+        root["hls_supported"] = false;
+        root["hls_ready"] = false;
+        root["http_flv_supported"] = false;
+        root["http_flv_ready"] = false;
+        root["mjpeg_supported"] = false;
+        root["mjpeg_ready"] = false;
+        root["webrtc_supported"] = false;
+        root["webrtc_ready"] = false;
+        root["active_subscriptions"] = 0;
+        root["preview_clients"] = 0;
+        root["cached_frames"] = 0;
+        root["cached_bytes"] = 0;
+        root["hls_bytes"] = 0;
+        VideoStreamDisplayConfig display_config;
+        if (ReadVideoStreamDisplayConfig(config, stream_id, &display_config)) {
+            AddVideoStreamDisplayConfig(&root, display_config);
+        }
+        return root;
+    }
     root["running"] = stream_info.running;
     root["codec"] = CodecToJsonString(stream_info.codec);
     root["codec_generation"] = stream_info.codec_generation;
