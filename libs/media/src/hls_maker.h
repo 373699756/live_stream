@@ -43,8 +43,6 @@ public:
 
     void Configure(const HlsMakerOptions &options);
     void Reset();
-    void MarkRequested() const;
-    bool Requested() const;
     bool IsPlaylistReady() const;
     size_t SegmentSize() const;
     uint64_t FirstSegmentSequence() const;
@@ -57,6 +55,7 @@ public:
     MediaHlsPlaylist BuildPlaylist(uint32_t hls_segment_duration_ms,
                                    uint32_t hls_playlist_depth) const;
     MediaSegmentRef FindSegmentRef(uint64_t sequence) const;
+    void RecordSegmentMiss() const;
     bool AppendFrame(const MediaFrame &frame,
                      const FramePayload &payload,
                      const std::string &vps,
@@ -112,7 +111,6 @@ private:
     uint64_t drop_size_ = 0;
     int64_t last_pts_us_ = -1;
     int64_t last_frame_duration_us_ = 33333;
-    mutable bool requested_ = false;
 };
 
 }  // namespace media_internal

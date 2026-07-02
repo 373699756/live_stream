@@ -192,7 +192,11 @@ MediaSegmentRef FindHlsSegmentRef(const StreamTrack &stream,
         return MediaSegmentRef{};
     }
 
-    return stream.hls_maker.FindSegmentRef(sequence);
+    MediaSegmentRef segment = stream.hls_maker.FindSegmentRef(sequence);
+    if (!segment.found) {
+        stream.hls_maker.RecordSegmentMiss();
+    }
+    return segment;
 }
 
 MediaFlvStart BuildFlvStart(const StreamTrack &stream) {

@@ -15,7 +15,7 @@ namespace webrtc_internal {
 class IWebrtcPeerHost;
 class WebrtcRtpPacketSink;
 
-struct WebrtcRtpSenderContext {
+struct WebrtcRtpSendRefs {
     IWebrtcPeerHost &peer_host;
     std::mutex &mutex;
     WebrtcStats &service_stats;
@@ -30,7 +30,7 @@ public:
     void Clear();
 
     bool SendFrame(const WebrtcPeerInfo &peer, const MediaFrame &frame,
-                   const WebrtcRtpSenderContext &context);
+                   const WebrtcRtpSendRefs &refs);
 
 private:
     friend class WebrtcRtpPacketSink;
@@ -49,7 +49,7 @@ private:
     bool SendRtpPacketView(const WebrtcPeerInfo &peer,
                            const MediaFrame &frame,
                            const rtp::RtpPacketView &packet,
-                           const WebrtcRtpSenderContext &context);
+                           const WebrtcRtpSendRefs &refs);
 
     rtp::RtpPacketizer packetizer_;
     std::map<std::string, PeerRtpState> peers_;

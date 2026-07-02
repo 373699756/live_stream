@@ -299,7 +299,6 @@ MediaHlsPlaylist MediaStreams::Impl::GetHlsPlaylist(
     if (stream == nullptr) {
         return MediaHlsPlaylist{};
     }
-    stream->hls_maker.MarkRequested();
     return media_internal::BuildHlsPlaylist(
         *stream, options_.hls_segment_duration_ms,
         options_.hls_playlist_depth);
@@ -313,7 +312,6 @@ MediaSegmentRef MediaStreams::Impl::GetHlsSegmentRef(
     if (stream == nullptr) {
         return MediaSegmentRef{};
     }
-    stream->hls_maker.MarkRequested();
     return media_internal::FindHlsSegmentRef(*stream, sequence);
 }
 

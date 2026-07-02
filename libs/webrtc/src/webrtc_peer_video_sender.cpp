@@ -335,9 +335,9 @@ void WebrtcPeerVideoSender::SendPeerFrame(const std::string &peer_id,
         peer_host = *peer_host_;
     }
 
-    webrtc_internal::WebrtcRtpSenderContext context{
+    webrtc_internal::WebrtcRtpSendRefs refs{
         *peer_host, *mutex_, *stats_};
-    (void)rtp_sender_.SendFrame(peer, frame, context);
+    (void)rtp_sender_.SendFrame(peer, frame, refs);
 }
 
 WebrtcPeerVideoSender::ClosedVideo

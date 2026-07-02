@@ -515,12 +515,7 @@ void HlsMaker::Reset() {
     drop_size_ = 0;
     last_pts_us_ = -1;
     last_frame_duration_us_ = 33333;
-    requested_ = false;
 }
-
-void HlsMaker::MarkRequested() const { requested_ = true; }
-
-bool HlsMaker::Requested() const { return requested_; }
 
 bool HlsMaker::IsPlaylistReady() const { return !segments_.empty(); }
 
@@ -586,9 +581,10 @@ MediaSegmentRef HlsMaker::FindSegmentRef(uint64_t sequence) const {
             return segment;
         }
     }
-    ++missing_segments_;
     return MediaSegmentRef{};
 }
+
+void HlsMaker::RecordSegmentMiss() const { ++missing_segments_; }
 
 bool HlsMaker::AppendFrame(const MediaFrame &frame,
                            const FramePayload &payload,

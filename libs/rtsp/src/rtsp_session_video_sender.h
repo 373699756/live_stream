@@ -37,7 +37,7 @@ private:
                                 uint32_t *sent_frames);
     void SendFrame(const std::shared_ptr<RtspSession> &session,
                    const MediaFrame &frame);
-    RtspRtpSenderContext RtpSenderContext();
+    RtspRtpSendRefs RtpSendRefs();
 
     MediaStreams *media_streams_ = nullptr;
     event::Loop *net_loop_ = nullptr;

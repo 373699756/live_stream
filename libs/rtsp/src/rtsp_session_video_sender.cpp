@@ -204,12 +204,12 @@ void RtspSessionVideoSender::SendFrame(
     if (should_send) {
         // SendFrame 内部会再次读取 transport 和统计字段；这里先过滤 stream/codec，
         // 防止旧 subscription 或错误码流的数据进入当前 session。
-        rtp_sender_.SendFrame(*session, frame, RtpSenderContext());
+        rtp_sender_.SendFrame(*session, frame, RtpSendRefs());
     }
 }
 
-RtspRtpSenderContext RtspSessionVideoSender::RtpSenderContext() {
-    return RtspRtpSenderContext{*socket_io_, *mutex_, *stats_};
+RtspRtpSendRefs RtspSessionVideoSender::RtpSendRefs() {
+    return RtspRtpSendRefs{*socket_io_, *mutex_, *stats_};
 }
 
 }  // namespace live_stream

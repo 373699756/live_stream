@@ -14,7 +14,7 @@ namespace live_stream {
 
 class RtspRtpPacketSink;
 
-struct RtspRtpSenderContext {
+struct RtspRtpSendRefs {
     ISocketIo &socket_io;
     std::mutex &mutex;
     RtspStats &service_stats;
@@ -25,7 +25,7 @@ public:
     explicit RtspRtpSender(uint32_t rtp_mtu_bytes);
 
     void SendFrame(RtspSession &session, const MediaFrame &frame,
-                   const RtspRtpSenderContext &context);
+                   const RtspRtpSendRefs &refs);
 
 private:
     friend class RtspRtpPacketSink;
@@ -33,7 +33,7 @@ private:
     bool SendRtpPacketView(RtspSession &session,
                            const MediaFrame &frame,
                            const rtp::RtpPacketView &packet,
-                           const RtspRtpSenderContext &context);
+                           const RtspRtpSendRefs &refs);
     rtp::RtpPacketizer packetizer_;
 };
 

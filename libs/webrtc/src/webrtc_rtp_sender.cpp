@@ -12,17 +12,17 @@ public:
     WebrtcRtpPacketSink(WebrtcRtpSender &sender,
                         const WebrtcPeerInfo &peer,
                         const MediaFrame &frame,
-                        const WebrtcRtpSenderContext &context)
+                        const WebrtcRtpSendRefs &refs)
         : sender_(sender),
           peer_(peer),
           frame_(frame),
-          context_(context) {}
+          refs_(refs) {}
 
     bool OnRtpPacket(const rtp::RtpPacketView &packet) override {
         if (!ok_) {
             return false;
         }
-        ok_ = sender_.SendRtpPacketView(peer_, frame_, packet, context_);
+        ok_ = sender_.SendRtpPacketView(peer_, frame_, packet, refs_);
         return ok_;
     }
 
@@ -30,7 +30,7 @@ private:
     WebrtcRtpSender &sender_;
     const WebrtcPeerInfo &peer_;
     const MediaFrame &frame_;
-    const WebrtcRtpSenderContext &context_;
+    const WebrtcRtpSendRefs &refs_;
     bool ok_ = true;
 };
 
@@ -76,7 +76,7 @@ void WebrtcRtpSender::Clear() {
 
 bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
                                 const MediaFrame &frame,
-                                const WebrtcRtpSenderContext &context) {
+                                const WebrtcRtpSendRefs &refs) {
     if (peer.peer_id.empty() || frame.stream_id != peer.stream_id ||
         frame.codec != peer.codec ||
         !IsMediaFramePayloadValid(frame)) {
@@ -86,26 +86,26 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
     const bool frame_is_keyframe = IsKeyframe(frame);
     uint16_t sequence = 0;
     WebrtcRtpSendParameters parameters;
-    if (!context.peer_host.GetRtpSendParameters(peer.peer_id, parameters) ||
+    if (!refs.peer_host.GetRtpSendParameters(peer.peer_id, parameters) ||
         parameters.codec != frame.codec || parameters.payload_type == 0 ||
         parameters.clock_rate != rtp::kRtpClockRate ||
         parameters.ssrc == 0) {
-        std::lock_guard<std::mutex> guard(context.mutex);
-        ++context.service_stats.dropped_frames;
+        std::lock_guard<std::mutex> guard(refs.mutex);
+        ++refs.service_stats.dropped_frames;
         return false;
     }
     const uint32_t rtp_timestamp =
         rtp::RtpTimestampFromPtsUs(frame.pts_us, parameters.clock_rate);
 
     {
-        std::lock_guard<std::mutex> guard(context.mutex);
+        std::lock_guard<std::mutex> guard(refs.mutex);
         auto iter = peers_.find(peer.peer_id);
         if (iter == peers_.end()) {
             return false;
         }
         PeerRtpState &state = iter->second;
         if (state.codec != frame.codec) {
-            ++context.service_stats.dropped_frames;
+            ++refs.service_stats.dropped_frames;
             return false;
         }
         state.ssrc = parameters.ssrc;
@@ -114,19 +114,19 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
         if (state.has_last_rtp_timestamp &&
             rtp::IsRtpTimestampBackwards(rtp_timestamp,
                                          state.last_rtp_timestamp)) {
-            ++context.service_stats.dropped_frames;
+            ++refs.service_stats.dropped_frames;
             return false;
         }
         if (!state.keyframe_seen) {
             if (!frame_is_keyframe) {
-                ++context.service_stats.dropped_frames;
+                ++refs.service_stats.dropped_frames;
                 return false;
             }
         }
         sequence = state.sequence;
     }
 
-    WebrtcRtpPacketSink sink(*this, peer, frame, context);
+    WebrtcRtpPacketSink sink(*this, peer, frame, refs);
     rtp::RtpPacketizerInput input;
     input.codec = RtpCodecFromCodec(frame.codec);
     // WebRTC 发送使用 MediaFrame 持有的 payload；RTP packetizer
@@ -140,7 +140,7 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
     const bool packetized = packetizer_.Packetize(input, &sink);
 
     {
-        std::lock_guard<std::mutex> guard(context.mutex);
+        std::lock_guard<std::mutex> guard(refs.mutex);
         auto iter = peers_.find(peer.peer_id);
         if (iter != peers_.end()) {
             iter->second.sequence = sequence;
@@ -153,9 +153,9 @@ bool WebrtcRtpSender::SendFrame(const WebrtcPeerInfo &peer,
             }
         }
         if (!packetized) {
-            ++context.service_stats.dropped_frames;
+            ++refs.service_stats.dropped_frames;
         } else {
-            ++context.service_stats.sent_frames;
+            ++refs.service_stats.sent_frames;
         }
     }
     return packetized;
@@ -165,20 +165,20 @@ bool WebrtcRtpSender::SendRtpPacketView(
     const WebrtcPeerInfo &peer,
     const MediaFrame &frame,
     const rtp::RtpPacketView &packet,
-    const WebrtcRtpSenderContext &context) {
+    const WebrtcRtpSendRefs &refs) {
     if (packet.Size() == 0) {
         return false;
     }
 
     // packet view 中的媒体 slice 只在当前调用栈有效。peer_host/transport 会在
     // SRTP protect 阶段复制成加密后的连续 UDP packet。
-    const bool sent = context.peer_host.SendRtpPacket(peer, frame, packet);
+    const bool sent = refs.peer_host.SendRtpPacket(peer, frame, packet);
     {
-        std::lock_guard<std::mutex> guard(context.mutex);
+        std::lock_guard<std::mutex> guard(refs.mutex);
         if (sent) {
-            ++context.service_stats.sent_rtp_packets;
+            ++refs.service_stats.sent_rtp_packets;
         } else {
-            ++context.service_stats.dropped_rtp_packets;
+            ++refs.service_stats.dropped_rtp_packets;
         }
     }
     return sent;
