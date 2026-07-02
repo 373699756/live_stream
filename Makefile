@@ -100,6 +100,7 @@ APP_SRCS := \
 	app/platform/linux/hisi_version.cpp \
 	app/platform/linux/linux_text.cpp \
 	app/platform/linux/linux_time_platform.cpp \
+	app/platform/linux/upgrade_status_file.cpp \
 	app/platform/linux/upgrade_platform.cpp \
 	app/tools/sysupgrade/upgrade_flash.cpp
 APP_OBJS := $(patsubst app/%.cpp,$(OBJ_DIR)/%.o,$(APP_SRCS))
@@ -108,6 +109,7 @@ SYSUPGRADE_SRCS := \
 	app/tools/sysupgrade/live_sysupgrade.cpp \
 	app/platform/linux/linux_process.cpp \
 	app/platform/linux/linux_text.cpp \
+	app/platform/linux/upgrade_status_file.cpp \
 	app/tools/sysupgrade/upgrade_flash.cpp
 SYSUPGRADE_OBJS := $(patsubst app/%.cpp,$(OBJ_DIR)/sysupgrade_%.o,$(SYSUPGRADE_SRCS))
 SYSUPGRADE_DEPS := $(SYSUPGRADE_OBJS:.o=.d)

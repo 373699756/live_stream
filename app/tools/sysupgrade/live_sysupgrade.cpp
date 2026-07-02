@@ -4,6 +4,7 @@
 #include "infra/hash.h"
 #include "infra/time.h"
 #include "platform/linux/linux_process.h"
+#include "platform/linux/upgrade_status_file.h"
 #include "tools/sysupgrade/upgrade_flash.h"
 #include "system/package.h"
 
@@ -30,18 +31,14 @@ namespace live_stream {
 namespace {
 
 using linux_platform::RunCommand;
+using linux_platform::AppendUpgradeLogLine;
 
-constexpr const char* kUpgradeLogPath = "/data/upgrade.log";
-constexpr const char* kUpgradeInfoPath = "/data/upgrade_status.json";
 constexpr const char* kDefaultStagePath = "/tmp/live_stream/upgrade/staged";
 constexpr const char* kStagePathPrefix = "/tmp/live_stream/upgrade/staged/";
 constexpr const char* kUploadPathPrefix = "/tmp/live_stream/upgrade/uploads/";
-constexpr uint64_t kUpgradeLogMaxBytes = 64U * 1024U;
-constexpr uint32_t kUpgradeLogRotateFiles = 1;
 constexpr uint16_t kDefaultStatusPort = 80;
 constexpr int kStatusServerRetryMs = 200;
 constexpr int kStatusRequestMaxBytes = 2048;
-uint32_t g_last_upgrade_progress = 0;
 
 struct UpgradeRuntimeStatus {
     std::string state = "preparing";
@@ -65,20 +62,6 @@ std::mutex g_status_mutex;
 UpgradeRuntimeStatus g_status;
 std::atomic<bool> g_reboot_requested(false);
 std::atomic<bool> g_status_server_ready(false);
-
-void AppendUpgradeLog(const std::string& msg) {
-    static_cast<void>(infra::Path::MakeDirs("/data"));
-    if (infra::File::Size(kUpgradeLogPath) >= kUpgradeLogMaxBytes) {
-        const std::string rotated_path =
-            std::string(kUpgradeLogPath) + "." +
-            std::to_string(kUpgradeLogRotateFiles);
-        static_cast<void>(infra::File::Remove(rotated_path));
-        static_cast<void>(infra::File::Rename(kUpgradeLogPath, rotated_path));
-    }
-    const std::string line =
-        std::to_string(infra::Time::SystemTimeMillis()) + " " + msg + "\n";
-    static_cast<void>(infra::File::Append(kUpgradeLogPath, line));
-}
 
 bool HasPrefix(const std::string& value, const std::string& prefix) {
     return value.compare(0, prefix.size(), prefix) == 0;
@@ -128,16 +111,16 @@ void CleanupTmpUpgradeFiles(const std::string& package_path,
                             const std::string& stage_dir) {
     if (HasPrefix(stage_dir, kStagePathPrefix)) {
         if (RemovePathTree(stage_dir)) {
-            AppendUpgradeLog("cleanup stage dir: " + stage_dir);
+            AppendUpgradeLogLine("cleanup stage dir: " + stage_dir);
         } else {
-            AppendUpgradeLog("cleanup stage dir failed: " + stage_dir);
+            AppendUpgradeLogLine("cleanup stage dir failed: " + stage_dir);
         }
     }
     if (HasPrefix(package_path, kUploadPathPrefix)) {
         if (infra::File::Remove(package_path)) {
-            AppendUpgradeLog("cleanup upload package: " + package_path);
+            AppendUpgradeLogLine("cleanup upload package: " + package_path);
         } else {
-            AppendUpgradeLog("cleanup upload package failed: " + package_path);
+            AppendUpgradeLogLine("cleanup upload package failed: " + package_path);
         }
     }
 }
@@ -189,7 +172,6 @@ void UpdateUpgradeStatus(const std::string& state,
                          const std::string& error_message) {
     const uint32_t bounded_progress =
         infra::Clamp<uint32_t>(progress, 0U, 100U);
-    g_last_upgrade_progress = bounded_progress;
     std::lock_guard<std::mutex> lock(g_status_mutex);
     g_status.state = state;
     g_status.progress_percent = bounded_progress;
@@ -206,37 +188,8 @@ void UpdateUpgradeStatus(const std::string& state,
 }
 
 void PersistUpgradeStatus(const UpgradeRuntimeStatus& status) {
-    static_cast<void>(infra::Path::MakeDirs("/data"));
-    const std::string tmp_path = std::string(kUpgradeInfoPath) + ".tmp";
-    const int fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0) {
-        return;
-    }
-    const std::string data = StatusToJson(status).dump(2) + "\n";
-    std::size_t offset = 0;
-    bool write_ok = true;
-    while (offset < data.size()) {
-        const ssize_t write_size =
-            write(fd, data.data() + offset, data.size() - offset);
-        if (write_size <= 0) {
-            write_ok = false;
-            break;
-        }
-        offset += static_cast<std::size_t>(write_size);
-    }
-    if (write_ok && fsync(fd) != 0) {
-        write_ok = false;
-    }
-    close(fd);
-    if (!write_ok || rename(tmp_path.c_str(), kUpgradeInfoPath) != 0) {
-        static_cast<void>(infra::File::Remove(tmp_path));
-        return;
-    }
-    const int dir_fd = open("/data", O_RDONLY | O_DIRECTORY);
-    if (dir_fd >= 0) {
-        static_cast<void>(fsync(dir_fd));
-        close(dir_fd);
-    }
+    static_cast<void>(linux_platform::WriteUpgradeStatusFile(
+        StatusToJson(status)));
 }
 
 void PersistCurrentUpgradeStatus() {
@@ -382,7 +335,7 @@ void StatusServerLoop(uint16_t port) {
         infra::Time::SleepMillis(kStatusServerRetryMs);
     }
     g_status_server_ready.store(true);
-    AppendUpgradeLog("status server listening: port=" + std::to_string(port));
+    AppendUpgradeLogLine("status server listening: port=" + std::to_string(port));
     while (true) {
         const int client_fd = accept(listen_fd, nullptr, nullptr);
         if (client_fd < 0) {
@@ -410,7 +363,7 @@ bool StartStatusServer(uint16_t port) {
         &thread, nullptr, StatusServerThread,
         reinterpret_cast<void*>(static_cast<uintptr_t>(port)));
     if (rc != 0) {
-        AppendUpgradeLog("status server thread create failed: errno=" +
+        AppendUpgradeLogLine("status server thread create failed: errno=" +
                          std::to_string(rc));
         return false;
     }
@@ -419,7 +372,7 @@ bool StartStatusServer(uint16_t port) {
 }
 
 void Usage() {
-    AppendUpgradeLog(
+    AppendUpgradeLogLine(
         "usage: live_sysupgrade --package <upgrade.zip> [--stage <dir>] "
         "[--status-port <port>] [--reboot]");
 }
@@ -455,11 +408,11 @@ bool ParseArgs(int argc, char** argv, SysupgradeOptions* options) {
 }
 
 void StopLiveStreamApp() {
-    AppendUpgradeLog("stop application begin");
+    AppendUpgradeLogLine("stop application begin");
     static_cast<void>(RunCommand({"/etc/init.d/S80live_stream", "stop"}));
     static_cast<void>(RunCommand({"killall", "live_stream"}));
     infra::Time::SleepMillis(300);
-    AppendUpgradeLog("stop application done");
+    AppendUpgradeLogLine("stop application done");
 }
 
 bool UnmountForCommand(const UpgradeCommand& command, std::string* msg) {
@@ -483,7 +436,7 @@ bool PackageNeedsStoppedApp(const UpgradeManifest& manifest) {
 bool ApplyPackage(const ParsedUpgradePackage& package,
                   const std::string& stage_dir,
                   std::string* msg) {
-    AppendUpgradeLog("apply package begin: stage=" + stage_dir +
+    AppendUpgradeLogLine("apply package begin: stage=" + stage_dir +
                      " commands=" +
                      std::to_string(package.manifest.commands.size()));
     for (const UpgradeCommand& command : package.manifest.commands) {
@@ -494,7 +447,7 @@ bool ApplyPackage(const ParsedUpgradePackage& package,
             return false;
         }
     }
-    AppendUpgradeLog("apply package rootfs check done");
+    AppendUpgradeLogLine("apply package rootfs check done");
     WriteUpgradeInfo("preparing", 6, true, package.manifest.version,
                      "checking temporary upgrade workspace", "");
     if (!upgrade_flash::IsPathOnTmpfs(stage_dir)) {
@@ -503,13 +456,13 @@ bool ApplyPackage(const ParsedUpgradePackage& package,
         }
         return false;
     }
-    AppendUpgradeLog("apply package tmpfs check done");
+    AppendUpgradeLogLine("apply package tmpfs check done");
     WriteUpgradeInfo("preparing", 7, true, package.manifest.version,
                      "checking flash partition layout", "");
     if (!upgrade_flash::ValidateMtdLayoutForManifest(package.manifest, msg)) {
         return false;
     }
-    AppendUpgradeLog("apply package mtd layout check done");
+    AppendUpgradeLogLine("apply package mtd layout check done");
     WriteUpgradeInfo("preparing", 8, true, package.manifest.version,
                      "creating temporary write workspace", "");
     if (!infra::Path::MakeDirs(stage_dir)) {
@@ -518,7 +471,7 @@ bool ApplyPackage(const ParsedUpgradePackage& package,
         }
         return false;
     }
-    AppendUpgradeLog("apply package stage dir ready");
+    AppendUpgradeLogLine("apply package stage dir ready");
     WriteUpgradeInfo("writing", 9, true, package.manifest.version,
                      "extracting upgrade package", "");
 
@@ -545,10 +498,10 @@ bool ApplyPackage(const ParsedUpgradePackage& package,
     if (!extract_ok) {
         return false;
     }
-    AppendUpgradeLog("apply package extract done");
+    AppendUpgradeLogLine("apply package extract done");
 
     if (PackageNeedsStoppedApp(package.manifest)) {
-        AppendUpgradeLog("stop application before system upgrade");
+        AppendUpgradeLogLine("stop application before system upgrade");
         StopLiveStreamApp();
     }
 
@@ -563,7 +516,7 @@ bool ApplyPackage(const ParsedUpgradePackage& package,
             (i * 70ULL) / package.manifest.commands.size());
         const uint32_t end_progress = 25U + static_cast<uint32_t>(
             ((i + 1) * 70ULL) / package.manifest.commands.size());
-        AppendUpgradeLog("burn partition begin: " + command.partition +
+        AppendUpgradeLogLine("burn partition begin: " + command.partition +
                          " index=" + ordinal + " file=" + command.file);
         WriteUpgradeInfo("writing",
                          infra::Clamp<uint32_t>(begin_progress, 25U, 95U),
@@ -597,7 +550,7 @@ bool ApplyPackage(const ParsedUpgradePackage& package,
             return false;
         }
         const uint32_t progress = end_progress;
-        AppendUpgradeLog("burn partition done: " + command.partition +
+        AppendUpgradeLogLine("burn partition done: " + command.partition +
                          " index=" + ordinal + " progress=" +
                          std::to_string(progress));
         WriteUpgradeInfo("writing", infra::Clamp<uint32_t>(progress, 25U, 95U),
@@ -619,40 +572,41 @@ int Run(int argc, char** argv) {
     ParsedUpgradePackage package;
     std::string msg;
     if (!ParseUpgradePackage(options.package_path, &package, &msg)) {
-        AppendUpgradeLog("sysupgrade validate failed: msg=" + msg);
-        WriteUpgradeInfo("failed", g_last_upgrade_progress, false, "",
-                         "validate failed", msg);
+        AppendUpgradeLogLine("sysupgrade validate failed: msg=" + msg);
+        WriteUpgradeInfo("failed", SnapshotUpgradeStatus().progress_percent,
+                         false, "", "validate failed", msg);
         return 1;
     }
 
-    AppendUpgradeLog("sysupgrade started: version=" +
-                     package.manifest.version + " exe=" + argv[0] +
-                     " exe_sha256=" + infra::Sha256FileHex(argv[0]) +
-                     " package=" + options.package_path +
-                     " stage=" + options.stage_dir);
+    AppendUpgradeLogLine("sysupgrade started: version=" +
+                         package.manifest.version + " exe=" + argv[0] +
+                         " exe_sha256=" + infra::Sha256FileHex(argv[0]) +
+                         " package=" + options.package_path +
+                         " stage=" + options.stage_dir);
     WriteUpgradeInfo("preparing", 5, true, package.manifest.version,
                      "sysupgrade helper preparing", "");
     const bool status_server_started = StartStatusServer(options.status_port);
     if (!status_server_started && !options.reboot) {
-        AppendUpgradeLog(
+        AppendUpgradeLogLine(
             "sysupgrade failed: status server is required without auto reboot");
-        WriteUpgradeInfo("failed", g_last_upgrade_progress, false,
-                         package.manifest.version,
+        WriteUpgradeInfo("failed", SnapshotUpgradeStatus().progress_percent,
+                         false, package.manifest.version,
                          "status server start failed",
                          "status server is required without auto reboot");
         return 1;
     }
 
     if (!ApplyPackage(package, options.stage_dir, &msg)) {
-        AppendUpgradeLog("sysupgrade failed: msg=" + msg);
-        WriteUpgradeInfo("failed", g_last_upgrade_progress, false,
-                         package.manifest.version, "sysupgrade failed", msg);
+        AppendUpgradeLogLine("sysupgrade failed: msg=" + msg);
+        WriteUpgradeInfo("failed", SnapshotUpgradeStatus().progress_percent,
+                         false, package.manifest.version,
+                         "sysupgrade failed", msg);
         CleanupTmpUpgradeFiles(options.package_path, options.stage_dir);
         sync();
         return 1;
     }
 
-    AppendUpgradeLog("sysupgrade completed: " + package.manifest.version);
+    AppendUpgradeLogLine("sysupgrade completed: " + package.manifest.version);
     WriteUpgradeInfo("writing", 96, true, package.manifest.version,
                      "cleaning temporary upgrade files", "");
     CleanupTmpUpgradeFiles(options.package_path, options.stage_dir);
@@ -664,7 +618,7 @@ int Run(int argc, char** argv) {
         sync();
         reboot(RB_AUTOBOOT);
         reboot(RB_POWER_OFF);
-        AppendUpgradeLog("reboot syscall failed after completed upgrade");
+        AppendUpgradeLogLine("reboot syscall failed after completed upgrade");
         WriteUpgradeInfo("failed", 100, false, package.manifest.version,
                          "reboot failed", "reboot failed");
         return 1;
@@ -674,14 +628,14 @@ int Run(int argc, char** argv) {
     while (!g_reboot_requested.load()) {
         infra::Time::SleepMillis(200);
     }
-    AppendUpgradeLog("reboot confirmed by upgrade status server");
+    AppendUpgradeLogLine("reboot confirmed by upgrade status server");
     UpdateUpgradeInfo("completed", 100, true, package.manifest.version,
                       "all flash partitions written; rebooting", "");
     PersistCompletedForBoot(package.manifest.version);
     sync();
     reboot(RB_AUTOBOOT);
     reboot(RB_POWER_OFF);
-    AppendUpgradeLog("reboot syscall failed after confirmed upgrade");
+    AppendUpgradeLogLine("reboot syscall failed after confirmed upgrade");
     WriteUpgradeInfo("failed", 100, false, package.manifest.version,
                      "reboot failed", "reboot failed");
     return 1;
