@@ -1,8 +1,10 @@
 #include "http_protocol.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cctype>
 #include <cstdlib>
+#include <limits>
 #include <utility>
 
 namespace live_stream {
@@ -54,6 +56,101 @@ HttpMethod ParseMethod(const std::string& value) {
         return HttpMethod::kDelete;
     }
     return HttpMethod::kGet;
+}
+
+bool TransferEncodingIsChunked(const HttpRequest& request) {
+    const std::string transfer_encoding =
+        ToLower(GetHeader(request, "Transfer-Encoding"));
+    std::size_t begin = 0;
+    while (begin <= transfer_encoding.size()) {
+        const std::size_t end = transfer_encoding.find(',', begin);
+        const std::string coding = Trim(transfer_encoding.substr(
+            begin, end == std::string::npos ? std::string::npos
+                                            : end - begin));
+        if (coding == "chunked") {
+            return true;
+        }
+        if (end == std::string::npos) {
+            break;
+        }
+        begin = end + 1;
+    }
+    return false;
+}
+
+bool ParseChunkSizeLine(const std::string& line, size_t* chunk_size) {
+    if (chunk_size == nullptr) {
+        return false;
+    }
+    const std::size_t extension = line.find(';');
+    const std::string size_text = Trim(
+        line.substr(0, extension == std::string::npos ? std::string::npos
+                                                      : extension));
+    if (size_text.empty()) {
+        return false;
+    }
+    errno = 0;
+    char* end = nullptr;
+    const unsigned long long parsed =
+        std::strtoull(size_text.c_str(), &end, 16);
+    if (end == size_text.c_str() || *end != '\0' || errno == ERANGE ||
+        parsed > static_cast<unsigned long long>(
+                     std::numeric_limits<size_t>::max())) {
+        return false;
+    }
+    *chunk_size = static_cast<size_t>(parsed);
+    return true;
+}
+
+RawParseStatus ParseChunkedBody(const std::string& raw,
+                                size_t body_offset,
+                                uint32_t max_body_bytes,
+                                std::string* body,
+                                size_t* consumed_bytes) {
+    if (body == nullptr || consumed_bytes == nullptr) {
+        return RawParseStatus::kBadRequest;
+    }
+    body->clear();
+    size_t pos = body_offset;
+    while (true) {
+        const size_t line_end = raw.find("\r\n", pos);
+        if (line_end == std::string::npos) {
+            return RawParseStatus::kIncomplete;
+        }
+        size_t chunk_size = 0;
+        if (!ParseChunkSizeLine(raw.substr(pos, line_end - pos),
+                                &chunk_size)) {
+            return RawParseStatus::kBadRequest;
+        }
+        pos = line_end + 2;
+        if (chunk_size == 0) {
+            if (raw.size() < pos + 2) {
+                return RawParseStatus::kIncomplete;
+            }
+            if (raw.compare(pos, 2, "\r\n") == 0) {
+                *consumed_bytes = pos + 2;
+                return RawParseStatus::kComplete;
+            }
+            const size_t trailer_end = raw.find("\r\n\r\n", pos);
+            if (trailer_end == std::string::npos) {
+                return RawParseStatus::kIncomplete;
+            }
+            *consumed_bytes = trailer_end + 4;
+            return RawParseStatus::kComplete;
+        }
+        if (chunk_size > static_cast<size_t>(max_body_bytes) ||
+            body->size() > static_cast<size_t>(max_body_bytes) - chunk_size) {
+            return RawParseStatus::kPayloadTooLarge;
+        }
+        if (raw.size() < pos + chunk_size + 2) {
+            return RawParseStatus::kIncomplete;
+        }
+        if (raw.compare(pos + chunk_size, 2, "\r\n") != 0) {
+            return RawParseStatus::kBadRequest;
+        }
+        body->append(raw.data() + pos, chunk_size);
+        pos += chunk_size + 2;
+    }
 }
 
 }  // namespace
@@ -201,9 +298,21 @@ RawParseResult ParseRawRequest(const std::string& raw,
         pos = line_end + 2;
     }
 
+    const bool chunked_body = TransferEncodingIsChunked(request);
     const std::string content_length_text = GetHeader(request, "Content-Length");
     size_t expected_body_size = 0;
-    if (!content_length_text.empty()) {
+    size_t consumed_bytes = header_end + 4;
+    if (chunked_body) {
+        std::string body;
+        const RawParseStatus chunked_status = ParseChunkedBody(
+            raw, body_offset, max_body_bytes, &body, &consumed_bytes);
+        if (chunked_status != RawParseStatus::kComplete) {
+            RawParseResult result;
+            result.status = chunked_status;
+            return result;
+        }
+        request.body = std::move(body);
+    } else if (!content_length_text.empty()) {
         char* end = nullptr;
         const unsigned long parsed =
             std::strtoul(content_length_text.c_str(), &end, 10);
@@ -224,6 +333,7 @@ RawParseResult ParseRawRequest(const std::string& raw,
             return result;
         }
         request.body.assign(raw.data() + body_offset, expected_body_size);
+        consumed_bytes += request.body.size();
     } else if (received_body_size > max_body_bytes) {
         RawParseResult result;
         result.status = RawParseStatus::kPayloadTooLarge;
@@ -232,7 +342,7 @@ RawParseResult ParseRawRequest(const std::string& raw,
     RawParseResult result;
     result.status = RawParseStatus::kComplete;
     result.request = std::move(request);
-    result.consumed_bytes = header_end + 4 + request.body.size();
+    result.consumed_bytes = consumed_bytes;
     const std::string connection = ToLower(Trim(GetHeader(request, "Connection")));
     result.keep_alive = version == "HTTP/1.1"
                             ? connection != "close"
