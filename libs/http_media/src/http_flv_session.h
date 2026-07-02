@@ -27,6 +27,7 @@ public:
     HttpFlvSession(HttpMediaWriter *writer, ConnectionId connection_id,
                    StreamId stream_id);
 
+    void Close() override;
     HttpFlvSessionStartStatus Start(const MediaFlvStart &flv_start,
                                     size_t &cached_flv_bytes);
     bool OnFlvChunk(const uint8_t *data, size_t size) override;

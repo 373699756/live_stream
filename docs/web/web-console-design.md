@@ -135,8 +135,9 @@ flowchart LR
 预览模式：
 
 - WebRTC：低延迟预览，信令通过 `/api/webrtc/peers` 及其 peer 子路径。
-- HLS：浏览器兼容分段播放，通过后端返回的 `/live/{stream}/hls/index.m3u8`。
-- HTTP-FLV：连续直播，通过后端返回的 `/live/{stream}.live.flv`。
+- HLS：浏览器兼容分段播放，通过后端返回的 `/live/{stream}/hls/index.m3u8`；
+  H.264 使用 MPEG-TS，H.265 使用 fMP4/CMAF，前端只在浏览器 MSE 支持 HEVC 时启用。
+- HTTP-FLV：连续直播，通过后端返回的 `/live/{stream}.live.flv`，仅用于 H.264。
 - MJPEG：multipart JPEG，通过后端返回的 `/live/{stream}.mjpg`。
 - snapshot：静态抓图，通过后端返回的 `/snapshot/{stream}.jpg`。
 
@@ -160,6 +161,8 @@ Web 只把这些缺失字段按不可用展示，不反向推导为真实后端�
 Web 通过 `GET /api/events` 订阅后端 SSE 事件，并在媒体状态变化时立即刷新
 `GET /api/media/streams`；轮询只作为事件流不可用时的兜底。协议自动选择优先使用
 WebRTC、HTTP-FLV、MJPEG，HLS 作为高延迟浏览器兼容兜底，不抢占低延迟协议。
+当当前码流是 H.265 时，HTTP-FLV 不作为可选预览模式；HLS 只有在浏览器和本地 hls.js
+均可通过 MSE 播放 HEVC fMP4 时才启用。
 
 `webrtcReady` 只有在后端确认 WebRTC 已启用且 native signaling、ICE、DTLS 和
 SRTP 均 ready 时才为 true；单独 signaling 可用不代表浏览器可播放。

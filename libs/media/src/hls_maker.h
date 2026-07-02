@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <deque>
 #include <string>
+#include <vector>
 
 namespace live_stream {
 namespace media_internal {
@@ -32,7 +33,14 @@ struct TsSegmentBuffer {
     size_t size = 0;
 };
 
-// 管理单路码流的内存 MPEG-TS HLS segment 生命周期。
+struct HlsFmp4Sample {
+    uint32_t duration_90k = 0;
+    uint32_t size = 0;
+    uint32_t flags = 0;
+    int32_t cts_offset_90k = 0;
+};
+
+    // 管理单路码流的内存 HLS segment 生命周期。
 // 当前 segment 只有在 FinalizeCurrentSegment 后才进入 playlist，对外不可见。
 class HlsMaker {
 public:
@@ -69,10 +77,13 @@ public:
 private:
     struct SegmentState {
         bool started = false;
+        HlsSegmentFormat format = HlsSegmentFormat::kTs;
         uint64_t sequence = 0;
         int64_t start_pts_us = 0;
         int64_t last_pts_us = 0;
+        uint64_t base_decode_time_90k = 0;
         MediaBufferBuilder body;
+        std::vector<HlsFmp4Sample> samples;
     };
 
     static void ResetSegmentState(SegmentState &segment);
@@ -92,6 +103,8 @@ private:
                               const std::string &pps,
                               bool prepend_parameter_sets,
                               const MediaFrame &frame);
+    bool BuildFinalizedFmp4Segment(const SegmentState &segment,
+                                   MediaBufferRef &body) const;
     int64_t CurrentSegmentDurationUs() const;
     void StartSegment(Codec codec, int64_t pts_us);
     void RememberSegmentCapacity(const SegmentState &segment);
@@ -102,6 +115,8 @@ private:
     HlsMakerOptions options_;
     std::deque<MediaSegmentRef> segments_;
     SegmentState current_segment_;
+    MediaBufferRef init_segment_;
+    std::string codec_string_;
     TsMuxerState ts_muxer_state_;
     uint32_t next_segment_capacity_ = 0;
     uint64_t next_segment_sequence_ = 1;

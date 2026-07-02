@@ -793,6 +793,16 @@ void MediaStreams::Impl::ApplyResetNoticeLocked(
     }
     frame_subscribers_.ClearStream(notice.stream_id,
                                    CloseReasonFromReset(notice.reason));
+    if (!media_internal::IsFlvCodecSupported(notice.codec)) {
+        const uint32_t detached = preview_clients_.DetachFlvStream(
+            notice.stream_id);
+        if (detached > 0) {
+            Info(kLogModuleName,
+                 "Detached FLV clients stream=%s codec=%s clients=%u",
+                 StreamIdName(notice.stream_id), CodecName(notice.codec),
+                 detached);
+        }
+    }
     Info(kLogModuleName, "Media stream reset stream=%s codec=%s reason=%s",
          StreamIdName(notice.stream_id), CodecName(notice.codec),
          MediaStreamResetReasonName(notice.reason));

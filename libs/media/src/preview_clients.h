@@ -29,6 +29,7 @@ public:
                                IMediaFlvSink *sink,
                                size_t max_clients);
     bool DetachFlv(MediaFlvClientId client_id);
+    uint32_t DetachFlvStream(StreamId stream_id);
     bool HasFlvClient(StreamId stream_id) const;
     void WriteFlv(StreamId stream_id,
                   uint64_t config_generation,

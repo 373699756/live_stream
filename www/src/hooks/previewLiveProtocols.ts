@@ -129,7 +129,7 @@ export function startHlsPreview({
         isSessionConnected: () => boolean;
         nextReadyMode: PreviewMode | null;
         onAutoModeFallback: () => void;
-    restartPreview: (msg: string) => void;
+        restartPreview: (msg: string) => void;
         setMode: (mode: PreviewMode) => void;
     };
     controls: PreviewSessionControls;

@@ -27,6 +27,7 @@ public:
                                   IMediaFlvSink *sink,
                                   size_t max_clients);
     bool DetachClient(MediaFlvClientId client_id);
+    uint32_t DetachStreamClients(StreamId stream_id);
     void Clear();
     size_t Size() const;
     bool IsStreamClientAttached(StreamId stream_id) const;

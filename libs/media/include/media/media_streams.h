@@ -106,6 +106,11 @@ const char *MediaStreamResetReasonName(MediaStreamResetReason reason);
 const char *SubscriptionCloseName(
     SubscriptionClose reason);
 
+enum class HlsSegmentFormat {
+    kTs = 0,
+    kFmp4,
+};
+
 struct MediaHlsEntry {
     uint64_t sequence = 0;
     int64_t duration_us = 0;
@@ -113,15 +118,19 @@ struct MediaHlsEntry {
 
 struct MediaHlsPlaylist {
     bool supported = false;
+    HlsSegmentFormat format = HlsSegmentFormat::kTs;
     uint32_t target_duration_sec = 0;
     uint64_t media_sequence = 0;
     uint64_t first_cached_sequence = 0;
     uint64_t last_cached_sequence = 0;
+    std::string codec_string;
+    MediaBufferRef init_segment;
     std::vector<MediaHlsEntry> entries;
 };
 
 struct MediaSegmentRef {
     bool found = false;
+    HlsSegmentFormat format = HlsSegmentFormat::kTs;
     uint64_t sequence = 0;
     int64_t duration_us = 0;
     MediaBufferRef body;
@@ -239,6 +248,7 @@ class IMediaFlvSink {
 public:
     virtual ~IMediaFlvSink() = default;
 
+    virtual void Close() {}
     virtual bool OnFlvChunk(const uint8_t *data, size_t size) = 0;
     virtual bool OnFlvVideoTag(const MediaFlvVideoTagView &tag,
                                const MediaFrame &frame) = 0;

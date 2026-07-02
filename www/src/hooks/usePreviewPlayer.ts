@@ -111,7 +111,7 @@ export function usePreviewPlayer({
         displaySize,
         flvPreviewEnabled: modeState.flvPreviewReady,
         flvSupported: modeState.flvSupported,
-        hlsLaunchable: modeState.hlsLaunchable,
+        hlsModeEnabled: modeState.hlsModeEnabled,
         hlsSupported: modeState.hlsSupported,
         mediaLayers,
         mjpegPreviewEnabled: modeState.mjpegPreviewReady,

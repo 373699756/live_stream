@@ -74,10 +74,13 @@ bool IsH265ParameterSetNal(uint8_t nal_type) {
 }
 
 bool IsH265IdrNal(uint8_t nal_type) {
-    // CRA 不是 IDR，但同样可作为随机访问点；播放缓存和 subscription 等待关键帧
-    // 时把它当作可启动的关键帧处理。
+    // CRA 不是 IDR，但同样可作为随机访问点；BLA 也可能被编码器作为关键帧入口。
+    // 播放缓存和 subscription 等待关键帧时统一按可启动关键帧处理。
     return nal_type == kH265NalTypeIdrWRadl ||
            nal_type == kH265NalTypeIdrNLp ||
+           nal_type == kH265NalTypeBlaW_LP ||
+           nal_type == kH265NalTypeBlaW_RADL ||
+           nal_type == kH265NalTypeBlaN_LP ||
            nal_type == kH265NalTypeCra;
 }
 

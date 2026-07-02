@@ -68,7 +68,9 @@ codec/generation、HTTP-FLV/MJPEG ready、last DTS 和 reset reason，便于在�
 | API | 实现归属 |
 | --- | --- |
 | `GET /live/{stream}/hls/index.m3u8` | `http_media` HLS playlist handler |
-| `GET /live/{stream}/hls/seg-{sequence}.ts` | `http_media` HLS segment handler |
+| `GET /live/{stream}/hls/init.mp4` | `http_media` H.265 HLS fMP4 init segment handler |
+| `GET /live/{stream}/hls/seg-{sequence}.ts` | `http_media` H.264 HLS MPEG-TS segment handler |
+| `GET /live/{stream}/hls/seg-{sequence}.m4s` | `http_media` H.265 HLS fMP4 media segment handler |
 | `GET /live/{stream}.live.flv` | `http_media` HTTP-FLV handler |
 | `GET /live/{stream}.mjpg` | `http_media` MJPEG handler |
 | `GET /api/events` | `http_media` SSE event stream |
@@ -80,7 +82,9 @@ codec/generation、HTTP-FLV/MJPEG ready、last DTS 和 reset reason，便于在�
 | `DELETE /api/webrtc/peers/{peer_id}` | `http_media` WebRTC close JSON handler |
 
 `stream` 只接受 `main` 或 `sub`。HLS、HTTP-FLV、MJPEG、SSE events 和 WHEP 属于
-流式/播放 URL，不包 JSON envelope；失败使用合适 HTTP 状态码和短错误文本。WebRTC
+流式/播放 URL，不包 JSON envelope；失败使用合适 HTTP 状态码和短错误文本。HLS
+按 codec 输出不同封装：H.264 使用 MPEG-TS，H.265 使用 fMP4/CMAF；HTTP-FLV 只支持
+H.264，H.265 Web 预览走 HLS fMP4 或 WebRTC。WebRTC
 JSON signaling 必须返回 `http` 冻结的 `{ ok, data, error, request_id }` envelope。
 
 HTTP streaming handler 必须返回明确的接管结果：`not_handled` 交回普通 router，

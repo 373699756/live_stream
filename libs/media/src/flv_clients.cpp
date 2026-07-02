@@ -31,6 +31,24 @@ bool FlvClients::DetachClient(MediaFlvClientId client_id) {
     return true;
 }
 
+uint32_t FlvClients::DetachStreamClients(StreamId stream_id) {
+    uint32_t detached = 0;
+    for (auto iter = clients_.begin(); iter != clients_.end();) {
+        ClientState &client = iter->second;
+        if (!client.detached && client.stream_id == stream_id) {
+            client.detached = true;
+            ++detached;
+        }
+        if (client.detached && client.pending_writes == 0) {
+            ReleaseClientSink(&client);
+            iter = clients_.erase(iter);
+        } else {
+            ++iter;
+        }
+    }
+    return detached;
+}
+
 void FlvClients::Clear() {
     for (auto iter = clients_.begin(); iter != clients_.end();) {
         iter->second.detached = true;
@@ -108,6 +126,7 @@ void FlvClients::ReleaseClientSink(ClientState *client) {
     if (client == nullptr || client->sink == nullptr) {
         return;
     }
+    client->sink->Close();
     delete client->sink;
     client->sink = nullptr;
 }

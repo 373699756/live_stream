@@ -18,6 +18,10 @@ constexpr uint8_t kH264NalTypePps = 8;
 constexpr uint8_t kH264NalTypeAud = 9;
 constexpr uint8_t kH265NalTypeIdrWRadl = 19;
 constexpr uint8_t kH265NalTypeIdrNLp = 20;
+// BLA (Broken Link Access) 类型同样表示随机访问入口；部分编码器会在关键帧首包使用 BLA。
+constexpr uint8_t kH265NalTypeBlaW_LP = 16;
+constexpr uint8_t kH265NalTypeBlaW_RADL = 17;
+constexpr uint8_t kH265NalTypeBlaN_LP = 18;
 constexpr uint8_t kH265NalTypeCra = 21;
 constexpr uint8_t kH265NalTypeVps = 32;
 constexpr uint8_t kH265NalTypeSps = 33;

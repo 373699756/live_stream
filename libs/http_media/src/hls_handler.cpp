@@ -49,7 +49,9 @@ HttpResponse BuildPlaylistResponse(const MediaHlsPlaylist &playlist,
     std::string body;
     const std::string segment_query = SegmentQuerySuffix(request);
     body += "#EXTM3U\n";
-    body += "#EXT-X-VERSION:3\n";
+    body += playlist.format == HlsSegmentFormat::kFmp4
+                ? "#EXT-X-VERSION:7\n"
+                : "#EXT-X-VERSION:3\n";
     body += "#EXT-X-TARGETDURATION:" +
             std::to_string(playlist.target_duration_sec == 0
                                ? 1
@@ -58,13 +60,17 @@ HttpResponse BuildPlaylistResponse(const MediaHlsPlaylist &playlist,
     body += "#EXT-X-MEDIA-SEQUENCE:" +
             std::to_string(playlist.media_sequence) + "\n";
     body += "#EXT-X-INDEPENDENT-SEGMENTS\n";
+    if (playlist.format == HlsSegmentFormat::kFmp4) {
+        body += "#EXT-X-MAP:URI=\"init.mp4" + segment_query + "\"\n";
+    }
     for (const MediaHlsEntry &entry : playlist.entries) {
         const double duration =
             static_cast<double>(entry.duration_us) / 1000000.0;
         char line[64];
         std::snprintf(line, sizeof(line), "#EXTINF:%.3f,\n", duration);
         body += line;
-        body += "seg-" + std::to_string(entry.sequence) + ".ts" +
+        body += "seg-" + std::to_string(entry.sequence) +
+                (playlist.format == HlsSegmentFormat::kFmp4 ? ".m4s" : ".ts") +
                 segment_query + "\n";
     }
 
@@ -99,8 +105,11 @@ bool ParseHlsPath(const HttpRequest &request, StreamId &stream_id,
 }
 
 bool IsHlsSegmentObjectName(const std::string &object_name) {
-    return HttpMediaStartsWith(object_name, "seg-") && object_name.size() > 7 &&
-           object_name.substr(object_name.size() - 3) == ".ts";
+    return HttpMediaStartsWith(object_name, "seg-") &&
+           ((object_name.size() > 7 &&
+             object_name.substr(object_name.size() - 3) == ".ts") ||
+            (object_name.size() > 8 &&
+             object_name.substr(object_name.size() - 4) == ".m4s"));
 }
 
 bool ParseHlsSegmentSequence(const std::string &object_name,
@@ -109,7 +118,10 @@ bool ParseHlsSegmentSequence(const std::string &object_name,
         return false;
     }
     const std::string sequence_text =
-        object_name.substr(4, object_name.size() - 7);
+        object_name.substr(
+            4, object_name.size() -
+                   (object_name.substr(object_name.size() - 4) == ".m4s" ? 8
+                                                                           : 7));
     char *end = nullptr;
     const unsigned long long parsed =
         std::strtoull(sequence_text.c_str(), &end, 10);
@@ -118,6 +130,32 @@ bool ParseHlsSegmentSequence(const std::string &object_name,
     }
     sequence = static_cast<uint64_t>(parsed);
     return true;
+}
+
+HttpResponse HandleInitSegment(MediaStreams &media_streams,
+                               const HttpRequest &request,
+                               StreamId stream_id,
+                               const MediaStreamInfo &stream_info) {
+    MediaHlsPlaylist playlist = media_streams.GetHlsPlaylist(stream_id);
+    if (playlist.format != HlsSegmentFormat::kFmp4 ||
+        !playlist.init_segment.Valid()) {
+        Error(kHttpMediaModuleName,
+              "HLS reject stream=%s object=init.mp4 reason=init_missing "
+              "codec=%s running=%d hls_ready=%d segments=%u",
+              MediaStreamIdToJson(stream_id), CodecName(stream_info.codec),
+              stream_info.running ? 1 : 0, stream_info.hls_ready ? 1 : 0,
+              stream_info.hls_segment_size);
+        return HttpMediaTextResponse(404, "HLS init segment not found");
+    }
+
+    (void)request;
+    HttpResponse response;
+    response.status_code = 200;
+    response.headers["Content-Type"] = "video/mp4";
+    response.body_slices.emplace_back(playlist.init_segment.Data(),
+                                      playlist.init_segment.Size(),
+                                      playlist.init_segment);
+    return response;
 }
 
 HttpResponse HandlePlaylist(MediaStreams &media_streams,
@@ -183,7 +221,8 @@ HttpResponse HandleSegment(MediaStreams &media_streams, StreamId stream_id,
 
     HttpResponse response;
     response.status_code = 200;
-    response.headers["Content-Type"] = "video/mp2t";
+    response.headers["Content-Type"] =
+        segment.format == HlsSegmentFormat::kFmp4 ? "video/mp4" : "video/mp2t";
     response.body_slices.emplace_back(segment.body.Data(), segment.body.Size(),
                                       segment.body);
     return response;
@@ -279,6 +318,10 @@ private:
         if (object_name == "index.m3u8") {
             return HandlePlaylist(*media_streams_, request, stream_id,
                                   object_name, stream_info);
+        }
+        if (object_name == "init.mp4") {
+            return HandleInitSegment(*media_streams_, request, stream_id,
+                                     stream_info);
         }
         if (IsHlsSegmentObjectName(object_name)) {
             return HandleSegment(*media_streams_, stream_id, object_name,

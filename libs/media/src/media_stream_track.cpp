@@ -50,22 +50,15 @@ void BuildH264Outputs(StreamTrack &stream, const MediaFrame &frame,
 void BuildH265Outputs(StreamTrack &stream, const ParsedFramePayload &payload,
                       const MediaFrame &frame, bool &keyframe,
                       bool &prepend_parameter_sets) {
-    // H.265 ready 条件比 H.264 多 VPS。三类参数集齐全后才生成 enhanced FLV
-    // sequence header，并允许预览协议链路进入 ready。
+    (void)frame;
+    // H.265 ready 条件比 H.264 多 VPS。三类参数集齐全后才允许 HLS fMP4、
+    // WebRTC 和 RTSP 进入可输出状态。
     bool has_vps = false;
     bool has_sps = false;
     bool has_pps = false;
     media_codec::ExtractH265ParameterSets(payload.h265_units, &stream.vps,
                                           &stream.sps, &stream.pps, &has_vps,
                                           &has_sps, &has_pps);
-    if (!stream.vps.empty() && !stream.sps.empty() && !stream.pps.empty() &&
-        (has_vps || has_sps || has_pps)) {
-        stream.sequence_header_tag = FlvMuxer::BuildSequenceHeader(
-            Codec::kH265, stream.vps, stream.sps, stream.pps,
-            static_cast<uint32_t>(frame.dts_us / 1000));
-        ++stream.config_generation;
-    }
-
     keyframe = keyframe || media_codec::ContainsH265Keyframe(payload.h265_units);
     const bool frame_has_parameter_sets =
         media_codec::ContainsH265ParameterSets(payload.h265_units);
@@ -80,7 +73,9 @@ bool IsPreviewStreamReady(MediaStreamState state, Codec codec) {
 }
 
 bool IsFlvCodecSupported(Codec codec) {
-    return codec == Codec::kH264 || codec == Codec::kH265;
+    // 当前浏览器侧播放链路使用 flv.js，不支持 H.265 FLV。
+    // 为避免 codec_id 错误导致的握手/解码失败，HTTP-FLV 只承载 H.264。
+    return codec == Codec::kH264;
 }
 
 bool IsHlsCodecSupported(Codec codec) {
@@ -111,6 +106,17 @@ bool IsMjpegStreamReady(const StreamTrack &stream) {
     return IsPreviewStreamReady(stream.state, stream.codec) &&
            IsMjpegCodecSupported(stream.codec) &&
            stream.has_latest_mjpeg_frame;
+}
+
+bool IsTrackReady(const StreamTrack &stream) {
+    if (stream.codec == Codec::kH265) {
+        return IsPreviewStreamReady(stream.state, stream.codec) &&
+               !stream.vps.empty() && !stream.sps.empty() &&
+               !stream.pps.empty();
+    }
+    // H.264 依赖 FLV sequence header 对应的 SPS/PPS；MJPEG 至少要有一帧。
+    return IsPreviewStreamReady(stream.state, stream.codec) &&
+           (IsFlvSequenceHeaderReady(stream) || IsMjpegStreamReady(stream));
 }
 
 void ParseFramePayload(const MediaFrame &frame, ParsedFramePayload &payload) {
@@ -231,11 +237,7 @@ MediaStreamInfo BuildMediaStreamInfo(const StreamTrack &stream) {
         info.hls_supported || info.flv_supported || info.mjpeg_supported;
     // track_ready 面向 RTSP/WebRTC/HTTP-FLV 等协议输出。H.264/H.265 必须已有
     // sequence header；MJPEG 则至少要有一帧最新 JPEG。
-    info.track_ready =
-        IsPreviewStreamReady(stream.state, stream.codec) &&
-        ((IsFlvCodecSupported(stream.codec) &&
-          IsFlvSequenceHeaderReady(stream)) ||
-         IsMjpegStreamReady(stream));
+    info.track_ready = IsTrackReady(stream);
     info.hls_ready = IsHlsStreamReady(stream);
     info.flv_ready = IsFlvStreamReady(stream);
     info.mjpeg_ready = IsMjpegStreamReady(stream);

@@ -323,7 +323,7 @@ private:
                   stream_info.flv_ready ? 1 : 0);
             return SendStreamingError(
                 writer_, connection_id,
-                HttpMediaTextResponse(409, "HTTP-FLV requires H.264/H.265 stream"));
+                HttpMediaTextResponse(409, "HTTP-FLV requires H.264 stream"));
         }
         if (!stream_info.running) {
             Error(kHttpMediaModuleName,

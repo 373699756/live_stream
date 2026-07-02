@@ -68,6 +68,7 @@ bool IsFlvSequenceHeaderReady(const StreamTrack &stream);
 bool IsFlvStreamReady(const StreamTrack &stream);
 bool IsHlsStreamReady(const StreamTrack &stream);
 bool IsMjpegStreamReady(const StreamTrack &stream);
+bool IsTrackReady(const StreamTrack &stream);
 
 void ParseFramePayload(const MediaFrame &frame, ParsedFramePayload &payload);
 bool IsFramePayloadParsed(const ParsedFramePayload &payload);

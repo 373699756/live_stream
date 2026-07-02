@@ -76,6 +76,11 @@ bool PreviewClients::DetachFlv(MediaFlvClientId client_id) {
     return flv_clients_.DetachClient(client_id);
 }
 
+uint32_t PreviewClients::DetachFlvStream(StreamId stream_id) {
+    std::lock_guard<std::mutex> guard(mutex_);
+    return flv_clients_.DetachStreamClients(stream_id);
+}
+
 bool PreviewClients::HasFlvClient(StreamId stream_id) const {
     std::lock_guard<std::mutex> guard(mutex_);
     return flv_clients_.IsStreamClientAttached(stream_id);

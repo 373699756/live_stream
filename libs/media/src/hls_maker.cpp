@@ -10,6 +10,7 @@
 #include <limits>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace live_stream {
 namespace media_internal {
@@ -22,8 +23,9 @@ constexpr uint16_t kPmtPid = 0x1000;
 constexpr uint16_t kVideoPid = 0x0100;
 constexpr uint8_t kTsPacketSize = 188;
 constexpr uint8_t kTsStreamTypeH264 = 0x1b;
-constexpr uint8_t kTsStreamTypeH265 = 0x24;
 constexpr size_t kMaxTsMediaSlices = 192;
+constexpr int64_t kNoKeyframeSegmentDurationMultiplier = 4;
+constexpr int64_t kNoKeyframeSegmentDurationFloorUs = 8000000;
 
 using byte_writer::AppendU16;
 using byte_writer::AppendU24;
@@ -31,7 +33,8 @@ using byte_writer::AppendU32;
 using byte_writer::AppendU8;
 
 uint8_t TsStreamType(Codec codec) {
-    return codec == Codec::kH265 ? kTsStreamTypeH265 : kTsStreamTypeH264;
+    (void)codec;
+    return kTsStreamTypeH264;
 }
 
 void FillBytes(char *target, size_t size, uint8_t value) {
@@ -246,6 +249,258 @@ struct TsFrameSlices {
     size_t ts_bytes = 0;
 };
 
+void AppendU64(std::string &out, uint64_t value) {
+    AppendU32(&out, static_cast<uint32_t>((value >> 32) & 0xffffffffULL));
+    AppendU32(&out, static_cast<uint32_t>(value & 0xffffffffULL));
+}
+
+std::string Mp4Box(const char *type, const std::string &payload) {
+    std::string box;
+    if (type == nullptr || payload.size() > 0xffffffffU - 8U) {
+        return box;
+    }
+    AppendU32(&box, static_cast<uint32_t>(payload.size() + 8U));
+    box.append(type, 4);
+    box.append(payload);
+    return box;
+}
+
+std::string Mp4FullBox(const char *type,
+                       uint8_t version,
+                       uint32_t flags,
+                       const std::string &payload) {
+    std::string body;
+    AppendU8(&body, version);
+    AppendU24(&body, flags);
+    body.append(payload);
+    return Mp4Box(type, body);
+}
+
+std::string BuildFtypBox() {
+    std::string body;
+    body.append("iso6", 4);
+    AppendU32(&body, 1);
+    body.append("iso6", 4);
+    body.append("mp41", 4);
+    body.append("hlsf", 4);
+    return Mp4Box("ftyp", body);
+}
+
+std::string BuildMvhdBox() {
+    std::string body;
+    AppendU32(&body, 0);
+    AppendU32(&body, 0);
+    AppendU32(&body, 90000);
+    AppendU32(&body, 0);
+    AppendU32(&body, 0x00010000);
+    AppendU16(&body, 0x0100);
+    AppendU16(&body, 0);
+    AppendU32(&body, 0);
+    AppendU32(&body, 0);
+    const uint32_t matrix[] = {
+        0x00010000, 0,          0,
+        0,          0x00010000, 0,
+        0,          0,          0x40000000,
+    };
+    for (uint32_t item : matrix) {
+        AppendU32(&body, item);
+    }
+    for (int i = 0; i < 6; ++i) {
+        AppendU32(&body, 0);
+    }
+    AppendU32(&body, 2);
+    return Mp4FullBox("mvhd", 0, 0, body);
+}
+
+std::string BuildTkhdBox() {
+    std::string body;
+    AppendU32(&body, 0);
+    AppendU32(&body, 0);
+    AppendU32(&body, 1);
+    AppendU32(&body, 0);
+    AppendU32(&body, 0);
+    AppendU32(&body, 0);
+    AppendU32(&body, 0);
+    AppendU16(&body, 0);
+    AppendU16(&body, 0);
+    AppendU16(&body, 0);
+    AppendU16(&body, 0);
+    const uint32_t matrix[] = {
+        0x00010000, 0,          0,
+        0,          0x00010000, 0,
+        0,          0,          0x40000000,
+    };
+    for (uint32_t item : matrix) {
+        AppendU32(&body, item);
+    }
+    AppendU32(&body, 1920U << 16);
+    AppendU32(&body, 1080U << 16);
+    return Mp4FullBox("tkhd", 0, 0x000007, body);
+}
+
+std::string BuildMdhdBox() {
+    std::string body;
+    AppendU32(&body, 0);
+    AppendU32(&body, 0);
+    AppendU32(&body, 90000);
+    AppendU32(&body, 0);
+    AppendU16(&body, 0x55c4);
+    AppendU16(&body, 0);
+    return Mp4FullBox("mdhd", 0, 0, body);
+}
+
+std::string BuildHdlrBox() {
+    std::string body;
+    AppendU32(&body, 0);
+    body.append("vide", 4);
+    AppendU32(&body, 0);
+    AppendU32(&body, 0);
+    AppendU32(&body, 0);
+    body.append("VideoHandler", 13);
+    AppendU8(&body, 0);
+    return Mp4FullBox("hdlr", 0, 0, body);
+}
+
+std::string BuildVmhdBox() {
+    std::string body;
+    AppendU16(&body, 0);
+    AppendU16(&body, 0);
+    AppendU16(&body, 0);
+    AppendU16(&body, 0);
+    return Mp4FullBox("vmhd", 0, 1, body);
+}
+
+std::string BuildDinfBox() {
+    std::string url = Mp4FullBox("url ", 0, 1, std::string());
+    std::string dref_body;
+    AppendU32(&dref_body, 1);
+    dref_body.append(url);
+    return Mp4Box("dinf", Mp4FullBox("dref", 0, 0, dref_body));
+}
+
+std::string BuildStsdBox(const std::string &hvcc_record) {
+    std::string sample;
+    sample.append(6, '\0');
+    AppendU16(&sample, 1);
+    AppendU16(&sample, 0);
+    AppendU16(&sample, 0);
+    AppendU32(&sample, 0);
+    AppendU32(&sample, 0);
+    AppendU32(&sample, 0);
+    AppendU16(&sample, 1920);
+    AppendU16(&sample, 1080);
+    AppendU32(&sample, 0x00480000);
+    AppendU32(&sample, 0x00480000);
+    AppendU32(&sample, 0);
+    AppendU16(&sample, 1);
+    sample.append(32, '\0');
+    AppendU16(&sample, 0x0018);
+    AppendU16(&sample, 0xffff);
+    sample.append(Mp4Box("hvcC", hvcc_record));
+
+    std::string body;
+    AppendU32(&body, 1);
+    body.append(Mp4Box("hvc1", sample));
+    return Mp4FullBox("stsd", 0, 0, body);
+}
+
+std::string BuildStblBox(const std::string &hvcc_record) {
+    std::string body;
+    body.append(BuildStsdBox(hvcc_record));
+    body.append(Mp4FullBox("stts", 0, 0, std::string(4, '\0')));
+    body.append(Mp4FullBox("stsc", 0, 0, std::string(4, '\0')));
+    body.append(Mp4FullBox("stsz", 0, 0, std::string(8, '\0')));
+    body.append(Mp4FullBox("stco", 0, 0, std::string(4, '\0')));
+    return Mp4Box("stbl", body);
+}
+
+std::string BuildInitSegment(const std::string &hvcc_record) {
+    std::string minf;
+    minf.append(BuildVmhdBox());
+    minf.append(BuildDinfBox());
+    minf.append(BuildStblBox(hvcc_record));
+
+    std::string mdia;
+    mdia.append(BuildMdhdBox());
+    mdia.append(BuildHdlrBox());
+    mdia.append(Mp4Box("minf", minf));
+
+    std::string trak;
+    trak.append(BuildTkhdBox());
+    trak.append(Mp4Box("mdia", mdia));
+
+    std::string trex_body;
+    AppendU32(&trex_body, 1);
+    AppendU32(&trex_body, 1);
+    AppendU32(&trex_body, 0);
+    AppendU32(&trex_body, 0);
+    AppendU32(&trex_body, 0);
+    const std::string mvex = Mp4Box("mvex", Mp4FullBox("trex", 0, 0, trex_body));
+
+    std::string moov;
+    moov.append(BuildMvhdBox());
+    moov.append(trak);
+    moov.append(mvex);
+    return BuildFtypBox() + Mp4Box("moov", moov);
+}
+
+std::string BuildStypBox() {
+    std::string body;
+    body.append("msdh", 4);
+    AppendU32(&body, 0);
+    body.append("msdh", 4);
+    body.append("msix", 4);
+    return Mp4Box("styp", body);
+}
+
+std::string BuildFmp4Moof(uint64_t sequence,
+                          uint64_t base_decode_time,
+                          const std::vector<HlsFmp4Sample> &samples,
+                          uint32_t data_offset) {
+    std::string mfhd_body;
+    AppendU32(&mfhd_body, static_cast<uint32_t>(sequence));
+
+    std::string tfhd_body;
+    AppendU32(&tfhd_body, 1);
+
+    std::string tfdt_body;
+    AppendU64(tfdt_body, base_decode_time);
+
+    std::string trun_body;
+    AppendU32(&trun_body, static_cast<uint32_t>(samples.size()));
+    AppendU32(&trun_body, data_offset);
+    for (const auto &sample : samples) {
+        AppendU32(&trun_body, sample.duration_90k);
+        AppendU32(&trun_body, sample.size);
+        AppendU32(&trun_body, sample.flags);
+        AppendU32(&trun_body, static_cast<uint32_t>(sample.cts_offset_90k));
+    }
+
+    std::string traf;
+    traf.append(Mp4FullBox("tfhd", 0, 0x020000, tfhd_body));
+    traf.append(Mp4FullBox("tfdt", 1, 0, tfdt_body));
+    traf.append(Mp4FullBox("trun", 1, 0x000f01, trun_body));
+
+    std::string moof;
+    moof.append(Mp4FullBox("mfhd", 0, 0, mfhd_body));
+    moof.append(Mp4Box("traf", traf));
+    return Mp4Box("moof", moof);
+}
+
+MediaBufferRef MediaBufferFromString(const std::string &data) {
+    if (data.empty() || data.size() > std::numeric_limits<uint32_t>::max()) {
+        return MediaBufferRef();
+    }
+    MediaBufferBuilder builder =
+        MediaBufferBuilder::Allocate(static_cast<uint32_t>(data.size()));
+    if (!builder.Valid() || builder.Data() == nullptr ||
+        !builder.Resize(static_cast<uint32_t>(data.size()))) {
+        return MediaBufferRef();
+    }
+    std::memcpy(builder.Data(), data.data(), data.size());
+    return builder.Finish();
+}
+
 size_t CopyPesBytes(const TsSliceList &pes_slices,
                     size_t offset,
                     size_t size,
@@ -382,45 +637,6 @@ bool AddH264AccessUnitSlices(const media_codec::H264NalUnitList &units,
     return true;
 }
 
-bool AddH265AccessUnitSlices(const media_codec::H265NalUnitList &units,
-                             const std::string &vps,
-                             const std::string &sps,
-                             const std::string &pps,
-                             bool prepend_parameter_sets,
-                             TsSliceList &slices) {
-    static constexpr uint8_t kStartCode[] = {0x00, 0x00, 0x00, 0x01};
-    static constexpr uint8_t kAud[] = {0x46, 0x01, 0x50};
-    if (!slices.Add(kStartCode, sizeof(kStartCode)) ||
-        !slices.Add(kAud, sizeof(kAud))) {
-        return false;
-    }
-    // HEVC segment 边界需要 VPS/SPS/PPS 三类参数集；只在关键帧且当前帧未自带
-    // 参数集时前置，避免每帧重复扩大 TS 体积。
-    if (prepend_parameter_sets && !vps.empty() && !sps.empty() && !pps.empty()) {
-        if (!slices.Add(kStartCode, sizeof(kStartCode)) ||
-            !slices.Add(reinterpret_cast<const uint8_t *>(vps.data()),
-                         vps.size()) ||
-            !slices.Add(kStartCode, sizeof(kStartCode)) ||
-            !slices.Add(reinterpret_cast<const uint8_t *>(sps.data()),
-                         sps.size()) ||
-            !slices.Add(kStartCode, sizeof(kStartCode)) ||
-            !slices.Add(reinterpret_cast<const uint8_t *>(pps.data()),
-                         pps.size())) {
-            return false;
-        }
-    }
-    for (const media_codec::H265NalUnit &unit : units) {
-        if (unit.type == media_codec::kH265NalTypeAud) {
-            continue;
-        }
-        if (!slices.Add(kStartCode, sizeof(kStartCode)) ||
-            !slices.Add(unit.data, unit.size)) {
-            return false;
-        }
-    }
-    return true;
-}
-
 bool AppendTsSegmentHeader(Codec codec,
                            TsMuxerState &state,
                            TsSegmentBuffer &segment_body) {
@@ -461,30 +677,33 @@ bool BuildH264TsFrameSlices(const media_codec::H264NalUnitList &units,
     return true;
 }
 
-bool BuildH265TsFrameSlices(const media_codec::H265NalUnitList &units,
-                            const std::string &vps,
-                            const std::string &sps,
-                            const std::string &pps,
-                            bool prepend_parameter_sets,
-                            int64_t pts_us,
-                            int64_t dts_us,
-                            TsFrameSlices &frame_slices) {
-    if (units.empty()) {
-        return false;
+bool AppendH265Fmp4SamplePayload(const media_codec::H265NalUnitList &units,
+                                 MediaBufferBuilder &body,
+                                 uint32_t &sample_size) {
+    sample_size = 0;
+    for (const media_codec::H265NalUnit &unit : units) {
+        if (unit.data == nullptr || unit.size == 0 ||
+            media_codec::IsH265ParameterSetNal(unit.type) ||
+            unit.type == media_codec::kH265NalTypeAud) {
+            continue;
+        }
+        if (unit.size > std::numeric_limits<uint32_t>::max() ||
+            sample_size > std::numeric_limits<uint32_t>::max() -
+                              static_cast<uint32_t>(unit.size) - 4U) {
+            return false;
+        }
+        const uint32_t old_size = body.Size();
+        const uint32_t next_size =
+            old_size + 4U + static_cast<uint32_t>(unit.size);
+        if (next_size > body.Capacity() || !body.Resize(next_size)) {
+            return false;
+        }
+        uint8_t *target = body.Data() + old_size;
+        byte_writer::WriteU32(target, static_cast<uint32_t>(unit.size));
+        std::memcpy(target + 4U, unit.data, unit.size);
+        sample_size += 4U + static_cast<uint32_t>(unit.size);
     }
-    frame_slices = TsFrameSlices{};
-    const uint64_t pts_90k = TimestampUsTo90k(pts_us);
-    const uint64_t dts_90k = TimestampUsTo90k(dts_us);
-    frame_slices.pes_header = BuildPesHeader(pts_90k, dts_90k);
-    frame_slices.dts_90k = dts_90k;
-    if (!frame_slices.pes_slices.AddString(frame_slices.pes_header) ||
-        !AddH265AccessUnitSlices(units, vps, sps, pps, prepend_parameter_sets,
-                                 frame_slices.pes_slices) ||
-        !TsPacketBytesForPesSize(frame_slices.pes_slices.total_size,
-                                 frame_slices.ts_bytes)) {
-        return false;
-    }
-    return true;
+    return sample_size > 0;
 }
 
 uint32_t AddHlsCachedBytes(uint32_t current, uint32_t bytes) {
@@ -506,6 +725,8 @@ void HlsMaker::Configure(const HlsMakerOptions &options) {
 void HlsMaker::Reset() {
     ClearSegments();
     ResetSegmentState(current_segment_);
+    init_segment_.Reset();
+    codec_string_.clear();
     ts_muxer_state_ = TsMuxerState{};
     next_segment_capacity_ = 0;
     next_segment_sequence_ = 1;
@@ -553,6 +774,9 @@ MediaHlsPlaylist HlsMaker::BuildPlaylist(
     }
 
     playlist.supported = true;
+    playlist.format = segments_.front().format;
+    playlist.init_segment = init_segment_;
+    playlist.codec_string = codec_string_;
     playlist.first_cached_sequence = FirstSegmentSequence();
     playlist.last_cached_sequence = LastSegmentSequence();
     const size_t playlist_depth =
@@ -598,13 +822,28 @@ bool HlsMaker::AppendFrame(const MediaFrame &frame,
     segment_created = false;
     ObserveFrameTiming(frame);
 
-    if (keyframe && current_segment_.started &&
-        frame.pts_us - current_segment_.start_pts_us >=
-            static_cast<int64_t>(hls_segment_duration_ms) * 1000) {
-        // 只在关键帧边界切 segment，避免 playlist 中出现不能独立解码的
-        // segment 起点。
+    const int64_t frame_elapsed_us =
+        frame.pts_us - current_segment_.start_pts_us;
+    const int64_t segment_duration_us =
+        static_cast<int64_t>(hls_segment_duration_ms) * 1000;
+    const int64_t force_finalize_us =
+        std::max<int64_t>(segment_duration_us *
+                              kNoKeyframeSegmentDurationMultiplier,
+                          kNoKeyframeSegmentDurationFloorUs);
+
+    const bool force_finalize =
+        current_segment_.started &&
+        (keyframe ? frame_elapsed_us >= segment_duration_us
+                  : frame_elapsed_us >= force_finalize_us);
+
+    if (force_finalize) {
+        // 关键帧缺失时给 segment 一个最长等待窗口，避免长期没有 finalized
+        // segment 导致前端 HLS 播放超时。
         const bool finalized = FinalizeCurrentSegment();
         segment_created = finalized;
+        if (finalized && keyframe) {
+            StartSegment(frame.codec, frame.pts_us);
+        }
     }
     if (keyframe && !current_segment_.started) {
         // HLS 首个 segment 必须从关键帧开始；关键帧前的 P/B 帧直接忽略。
@@ -722,16 +961,49 @@ bool HlsMaker::AppendFrameToSegment(const FramePayload &payload,
     if (!current_segment_.body.Valid()) {
         return false;
     }
-    TsFrameSlices frame_slices;
     if (frame.codec == Codec::kH265) {
-        if (!BuildH265TsFrameSlices(payload.h265_units, vps, sps, pps,
-                                    prepend_parameter_sets, frame.pts_us,
-                                    frame.dts_us, frame_slices)) {
+        if (!init_segment_.Valid()) {
+            std::string hvcc_record;
+            if (!media_codec::BuildH265HvccRecord(vps, sps, pps,
+                                                  &hvcc_record)) {
+                return false;
+            }
+            init_segment_ = MediaBufferFromString(BuildInitSegment(hvcc_record));
+            codec_string_ = "hvc1.1.6.L93.B0";
+            if (!init_segment_.Valid()) {
+                return false;
+            }
+        }
+        const size_t extra_bytes =
+            static_cast<size_t>(frame.payload.Size()) +
+            media_codec::kMaxNalUnitsPerFrame * 4U;
+        if (!EnsureSegmentCapacity(current_segment_, extra_bytes)) {
+            ++drop_size_;
             return false;
         }
-    } else if (!BuildH264TsFrameSlices(payload.h264_units, sps, pps,
-                                       prepend_parameter_sets, frame.pts_us,
-                                       frame.dts_us, frame_slices)) {
+        uint32_t sample_size = 0;
+        if (!AppendH265Fmp4SamplePayload(payload.h265_units,
+                                         current_segment_.body,
+                                         sample_size)) {
+            return false;
+        }
+        HlsFmp4Sample sample;
+        sample.duration_90k = static_cast<uint32_t>(
+            std::max<int64_t>(1, last_frame_duration_us_) * 9 / 100);
+        sample.size = sample_size;
+        sample.flags = (frame.frame_type == FrameType::kIdr ||
+                        frame.frame_type == FrameType::kI)
+                           ? 0x02000000
+                           : 0x01010000;
+        sample.cts_offset_90k = static_cast<int32_t>(
+            (frame.pts_us - frame.dts_us) * 9 / 100);
+        current_segment_.samples.push_back(sample);
+        return true;
+    }
+    TsFrameSlices frame_slices;
+    if (!BuildH264TsFrameSlices(payload.h264_units, sps, pps,
+                                prepend_parameter_sets, frame.pts_us,
+                                frame.dts_us, frame_slices)) {
         return false;
     }
     if (!EnsureSegmentCapacity(current_segment_, frame_slices.ts_bytes)) {
@@ -755,6 +1027,29 @@ bool HlsMaker::AppendFrameToSegment(const FramePayload &payload,
     return false;
 }
 
+bool HlsMaker::BuildFinalizedFmp4Segment(const SegmentState &segment,
+                                         MediaBufferRef &body) const {
+    body.Reset();
+    if (segment.samples.empty() || !segment.body.Valid()) {
+        return false;
+    }
+    std::string mdat_payload;
+    mdat_payload.assign(
+        reinterpret_cast<const char *>(segment.body.Data()),
+        segment.body.Size());
+    const std::string mdat = Mp4Box("mdat", mdat_payload);
+    const std::string styp = BuildStypBox();
+    std::string moof = BuildFmp4Moof(segment.sequence,
+                                     segment.base_decode_time_90k,
+                                     segment.samples, 0);
+    const uint32_t data_offset =
+        static_cast<uint32_t>(styp.size() + moof.size() + 8U);
+    moof = BuildFmp4Moof(segment.sequence, segment.base_decode_time_90k,
+                         segment.samples, data_offset);
+    body = MediaBufferFromString(styp + moof + mdat);
+    return body.Valid();
+}
+
 int64_t HlsMaker::CurrentSegmentDurationUs() const {
     return std::max<int64_t>(last_frame_duration_us_,
                              current_segment_.last_pts_us -
@@ -766,22 +1061,28 @@ void HlsMaker::StartSegment(Codec codec, int64_t pts_us) {
     ResetSegmentState(current_segment_);
     current_segment_ = SegmentState{};
     current_segment_.started = true;
+    current_segment_.format =
+        codec == Codec::kH265 ? HlsSegmentFormat::kFmp4
+                              : HlsSegmentFormat::kTs;
     current_segment_.sequence = next_segment_sequence_++;
     current_segment_.start_pts_us = pts_us;
     current_segment_.last_pts_us = pts_us;
+    current_segment_.base_decode_time_90k = TimestampUsTo90k(pts_us);
     const uint32_t segment_capacity =
         ClampSegmentCapacity(next_segment_capacity_);
     // segment body 是 HLS 自己的 MediaBuffer，生命周期随 playlist retain 管理；
-    // 它存放已经转封装后的 MPEG-TS 数据，不再引用输入 MediaFrame。
+    // 它存放已经转封装后的数据，不再引用输入 MediaFrame。
     current_segment_.body = MediaBufferBuilder::Allocate(segment_capacity);
     if (!current_segment_.body.Valid()) {
         ResetSegmentState(current_segment_);
         return;
     }
-    TsSegmentBuffer segment_body = SegmentBuffer(current_segment_);
-    if (!AppendTsSegmentHeader(codec, ts_muxer_state_, segment_body) ||
-        !CommitSegmentBuffer(current_segment_, segment_body)) {
-        ResetSegmentState(current_segment_);
+    if (current_segment_.format == HlsSegmentFormat::kTs) {
+        TsSegmentBuffer segment_body = SegmentBuffer(current_segment_);
+        if (!AppendTsSegmentHeader(codec, ts_muxer_state_, segment_body) ||
+            !CommitSegmentBuffer(current_segment_, segment_body)) {
+            ResetSegmentState(current_segment_);
+        }
     }
 }
 
@@ -823,10 +1124,17 @@ bool HlsMaker::PushFinalizedSegment() {
     }
     MediaSegmentRef segment;
     segment.found = true;
+    segment.format = current_segment_.format;
     segment.sequence = current_segment_.sequence;
     segment.duration_us = CurrentSegmentDurationUs();
     RememberSegmentCapacity(current_segment_);
-    segment.body = current_segment_.body.Finish();
+    if (current_segment_.format == HlsSegmentFormat::kFmp4) {
+        if (!BuildFinalizedFmp4Segment(current_segment_, segment.body)) {
+            return false;
+        }
+    } else {
+        segment.body = current_segment_.body.Finish();
+    }
     const uint32_t segment_bytes = segment.body.Size();
     if (segment_bytes > options_.max_cached_bytes) {
         ++drop_size_;

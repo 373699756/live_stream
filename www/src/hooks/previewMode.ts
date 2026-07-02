@@ -9,12 +9,40 @@ export const previewModeLabels: Record<PreviewMode, string> = {
     mjpeg: 'MJPEG',
 };
 
+let hevcPlayable: boolean | null = null;
+
+function browserCanPlayHevc() {
+    if (hevcPlayable !== null) {
+        return hevcPlayable;
+    }
+    if (typeof MediaSource === 'undefined' || !MediaSource.isTypeSupported) {
+        return false;
+    }
+    hevcPlayable = [
+        'video/mp4; codecs="hvc1.1.6.L93.B0"',
+        'video/mp4; codecs="hev1.1.6.L93.B0"',
+    ].some((mimeType) =>
+        MediaSource.isTypeSupported(mimeType),
+    );
+    return hevcPlayable;
+}
+
+function browserCanPreviewHlsCodec(codec?: string) {
+    if (codec === 'h265') {
+        return browserCanPlayHevc();
+    }
+    return codec === 'h264';
+}
+
+function browserCanPreviewFlvCodec(codec?: string) {
+    return codec === 'h264';
+}
+
 export interface PreviewReadiness {
     flvModeEnabled: boolean;
     flvPreviewReady: boolean;
     flvReady: boolean;
     flvSupported: boolean;
-    hlsLaunchable: boolean;
     hlsModeEnabled: boolean;
     hlsPreviewReady: boolean;
     hlsReady: boolean;
@@ -43,9 +71,15 @@ export function buildPreviewReadiness(
     const flvReady = active?.http_flv_ready ?? false;
     const mjpegReady = active?.mjpeg_ready ?? false;
     const webrtcReady = active?.webrtc_ready ?? false;
-    const hlsSupported = Boolean(active?.hls_supported && previewUrls?.hls);
+    const hlsSupported = Boolean(
+        active?.hls_supported &&
+            previewUrls?.hls &&
+            browserCanPreviewHlsCodec(active?.codec),
+    );
     const flvSupported = Boolean(
-        active?.http_flv_supported && previewUrls?.http_flv,
+        active?.http_flv_supported &&
+            previewUrls?.http_flv &&
+            browserCanPreviewFlvCodec(active?.codec),
     );
     const mjpegSupported = Boolean(
         active?.mjpeg_supported && previewUrls?.mjpeg,
@@ -54,17 +88,16 @@ export function buildPreviewReadiness(
     const webrtcEnabled = webrtcSupported;
     const streamRunning = active?.running ?? false;
     const webrtcModeEnabled = webrtcEnabled && streamRunning;
-    const hlsLaunchable = hlsSupported && streamRunning;
-    const hlsModeEnabled = hlsLaunchable;
+    const hlsModeEnabled = hlsSupported && streamRunning;
     const flvModeEnabled = flvSupported && streamRunning;
     const mjpegModeEnabled = mjpegSupported && streamRunning;
     const webrtcPreviewReady = webrtcModeEnabled && webrtcReady;
-    const hlsPreviewReady = hlsLaunchable && hlsReady;
+    const hlsPreviewReady = hlsModeEnabled && hlsReady;
     const flvPreviewReady = flvModeEnabled && flvReady;
     const mjpegPreviewReady = mjpegModeEnabled && mjpegReady;
     const selectedModeEnabled =
         (mode === 'webrtc' && webrtcPreviewReady) ||
-        (mode === 'hls' && hlsLaunchable) ||
+        (mode === 'hls' && hlsModeEnabled) ||
         (mode === 'flv' && flvPreviewReady) ||
         (mode === 'mjpeg' && mjpegPreviewReady);
     const nextReadyMode = webrtcPreviewReady
@@ -83,7 +116,6 @@ export function buildPreviewReadiness(
         flvPreviewReady,
         flvReady,
         flvSupported,
-        hlsLaunchable,
         hlsModeEnabled,
         hlsPreviewReady,
         hlsReady,

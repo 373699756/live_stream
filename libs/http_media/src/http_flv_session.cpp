@@ -215,6 +215,12 @@ HttpFlvSession::HttpFlvSession(HttpMediaWriter *writer,
                                StreamId stream_id)
     : writer_(writer), connection_id_(connection_id), stream_id_(stream_id) {}
 
+void HttpFlvSession::Close() {
+    if (writer_ != nullptr && writer_->IsConnectionOpen(connection_id_)) {
+        writer_->CloseConnection(connection_id_);
+    }
+}
+
 HttpFlvSessionStartStatus HttpFlvSession::Start(
     const MediaFlvStart &flv_start, size_t &cached_flv_bytes) {
     cached_flv_bytes = 0;

@@ -30,7 +30,8 @@
 
 `MediaStreams` 拥有码流缓存和帧客户端共享缓存。输入帧使用 RAII `MediaBufferRef`
 保活，协议订阅和 FLV GOP cache 只增加底层 buffer 引用，不复制整帧
-payload；HLS segment 是独立转封装后的 TS buffer。
+payload；HLS segment 是独立转封装后的 buffer，H.264 输出 MPEG-TS，
+H.265 输出 fMP4/CMAF。
 `MediaSourceRegistry` 只保存 non-owning `MediaStreams*`，不代理帧操作、
 不控制媒体生命周期，也不新增缓存。它的作用是消除协议构造 DTO 对
 `MediaStreams*` 的直接字段依赖。
@@ -54,7 +55,8 @@ media 同时发布 `kMediaSubscriptionChanged`，`msg` 使用
 查询接口读取。
 
 `MediaStreams` 只做协调：`MediaStreamTracks` 持有主/子码流的 codec、参数集、
-HLS/FLV/MJPEG 缓存和 reset 规则；`FrameSubscribers` 持有协议帧订阅和共享 live frame；
+HLS/FLV/MJPEG 缓存和 reset 规则；HLS 对 H.264 使用 `.ts` segment，对 H.265 使用
+`init.mp4` 加 `.m4s` segment，HTTP-FLV 只承载 H.264；`FrameSubscribers` 持有协议帧订阅和共享 live frame；
 `PreviewClients` 持有 HTTP-FLV/MJPEG preview client、sink 生命周期和
 pending write 数量。集合当前基数接口使用 `Size()`，不要使用 `Count()`。不要再把
 `MediaStreams` 按 start/input/output 这类函数主题
