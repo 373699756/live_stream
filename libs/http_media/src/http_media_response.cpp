@@ -48,10 +48,6 @@ HttpResponse HttpMediaForbiddenResponse(const AuthPrincipal &principal) {
     return HttpMediaStatusResponse(403, "Forbidden");
 }
 
-HttpResponse HttpMediaOkResponse() {
-    return HttpMediaJsonResponse(200, Json::object());
-}
-
 std::string BuildHttpMediaStreamHeader(
     int status_code, const std::map<std::string, std::string> &headers) {
     std::string header_block =

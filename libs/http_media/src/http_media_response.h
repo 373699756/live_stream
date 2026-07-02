@@ -15,7 +15,6 @@ HttpResponse HttpMediaStatusResponse(int status_code,
                                      const std::string &msg);
 HttpResponse HttpMediaTextResponse(int status_code, const std::string &msg);
 HttpResponse HttpMediaForbiddenResponse(const AuthPrincipal &principal);
-HttpResponse HttpMediaOkResponse();
 std::string BuildHttpMediaStreamHeader(
     int status_code, const std::map<std::string, std::string> &headers);
 
