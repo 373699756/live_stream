@@ -1,6 +1,7 @@
 #include "http_request_splitter.h"
 
 #include <cstdlib>
+#include <limits>
 #include <string>
 
 namespace live_stream {
@@ -72,6 +73,41 @@ bool HeaderValue(const std::string &header_block,
     return false;
 }
 
+bool HeaderHasChunkedTransferEncoding(const std::string &header_block) {
+    std::string transfer_encoding;
+    if (!HeaderValue(header_block, "Transfer-Encoding",
+                     &transfer_encoding)) {
+        return false;
+    }
+    transfer_encoding = LowerAscii(transfer_encoding);
+    std::size_t begin = 0;
+    while (begin <= transfer_encoding.size()) {
+        const std::size_t end = transfer_encoding.find(',', begin);
+        const std::string coding = TrimAscii(transfer_encoding.substr(
+            begin, end == std::string::npos ? std::string::npos
+                                            : end - begin));
+        if (coding == "chunked") {
+            return true;
+        }
+        if (end == std::string::npos) {
+            break;
+        }
+        begin = end + 1;
+    }
+    return false;
+}
+
+size_t ChunkedRequestRawLimit(size_t header_bytes, uint32_t max_body_bytes) {
+    const size_t body_limit = static_cast<size_t>(max_body_bytes);
+    const size_t chunk_overhead_limit = 4096U + body_limit / 2U;
+    const size_t max_size = std::numeric_limits<size_t>::max();
+    if (header_bytes > max_size - body_limit ||
+        header_bytes + body_limit > max_size - chunk_overhead_limit) {
+        return max_size;
+    }
+    return header_bytes + body_limit + chunk_overhead_limit;
+}
+
 }  // namespace
 
 bool HttpRequestSplitter::Append(const uint8_t *data, uint32_t size) {
@@ -126,24 +162,38 @@ bool HttpRequestSplitter::ShouldSendContinue(
 HttpRequestSplitResult HttpRequestSplitter::SplitNext(
     const HttpRequestSplitOptions &options, const std::string &client_ip) {
     HttpRequestSplitResult result;
-    const size_t max_buffer_size =
-        static_cast<size_t>(options.max_header_bytes) + 4 +
-        options.max_body_bytes;
     if (recv_buffer_.empty()) {
         result.status = HttpRequestSplitStatus::kIncomplete;
         return result;
     }
-    if (recv_buffer_.size() > max_buffer_size) {
-        // 请求头还没完整时也要受总上限约束，避免恶意客户端一直发无结束符头部。
+    const size_t header_end = recv_buffer_.find("\r\n\r\n");
+    if (header_end == std::string::npos) {
+        if (recv_buffer_.size() > static_cast<size_t>(options.max_header_bytes)) {
+            // 请求头还没完整时也要受 header 上限约束，避免恶意客户端一直发
+            // 无结束符头部。
+            result.status = HttpRequestSplitStatus::kPayloadTooLarge;
+        }
+        return result;
+    }
+    if (header_end > static_cast<size_t>(options.max_header_bytes)) {
         result.status = HttpRequestSplitStatus::kPayloadTooLarge;
         return result;
     }
-
     // ParseRawRequest 只消费一个完整 HTTP message；剩余字节留在 recv_buffer_，
     // 由 HttpSession 的 pipeline 上限控制继续排队。
     RawParseResult parsed = ParseRawRequest(
         recv_buffer_, options.max_header_bytes, options.max_body_bytes,
         client_ip);
+    if (parsed.status == RawParseStatus::kIncomplete) {
+        const std::string header_block = recv_buffer_.substr(0, header_end);
+        const size_t header_bytes = header_end + 4;
+        if (HeaderHasChunkedTransferEncoding(header_block) &&
+            recv_buffer_.size() >
+                ChunkedRequestRawLimit(header_bytes, options.max_body_bytes)) {
+            result.status = HttpRequestSplitStatus::kPayloadTooLarge;
+            return result;
+        }
+    }
     result.status = SplitStatusFromRawStatus(parsed.status);
     if (result.status != HttpRequestSplitStatus::kComplete) {
         return result;

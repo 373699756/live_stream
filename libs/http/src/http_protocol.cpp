@@ -298,8 +298,13 @@ RawParseResult ParseRawRequest(const std::string& raw,
         pos = line_end + 2;
     }
 
-    const bool chunked_body = TransferEncodingIsChunked(request);
     const std::string content_length_text = GetHeader(request, "Content-Length");
+    const bool chunked_body = TransferEncodingIsChunked(request);
+    if (chunked_body && !content_length_text.empty()) {
+        RawParseResult result;
+        result.status = RawParseStatus::kBadRequest;
+        return result;
+    }
     size_t expected_body_size = 0;
     size_t consumed_bytes = header_end + 4;
     if (chunked_body) {
