@@ -141,7 +141,11 @@ public:
                          DeviceMedia *device,
                          MediaStreams *media_streams,
                          event::EventCenter *event)
-        : access_(access), writer_(writer), device_(device), media_streams_(media_streams), event_(event) {}
+        : access_(access),
+          writer_(writer),
+          device_(device),
+          media_streams_(media_streams),
+          event_(event) {}
 
     bool CanHandleStreamingRequest(const HttpRequest &request) const override {
         if (request.method != HttpMethod::kGet) {
@@ -597,12 +601,14 @@ private:
 };
 
 std::unique_ptr<IStreamingHttpHandler> CreateStreamingHttpHandler(
-    const StreamingHttpHandlerRefs &refs) {
+    HttpAccess *access,
+    HttpMediaWriter *writer,
+    DeviceMedia *device,
+    MediaStreams *media_streams,
+    event::EventCenter *event) {
     return std::unique_ptr<IStreamingHttpHandler>(
-        new StreamingHttpHandler(
-            refs.access, refs.writer,
-            refs.device, refs.media_streams,
-            refs.event));
+        new StreamingHttpHandler(access, writer, device, media_streams,
+                                 event));
 }
 
 }  // namespace live_stream

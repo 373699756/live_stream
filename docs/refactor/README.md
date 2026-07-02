@@ -66,7 +66,7 @@ AI抓帧 -> ai backend -> alarm / alert images / api status
 - FLV start、subscription frame、HLS segment ref 等主路径已由 RAII 值对象管理。
 - `MediaStreams` 已拆出 stream state、frame ring、preview clients、GOP cache、HLS maker、FLV muxer 等职责对象。
 - socket_io send queue、send buffer limit、pending bytes、closed connection 限制已有基础。
-- HTTP handler 创建已从旧 `CreateHttpHandler(kind, deps)` 分发改为按业务入口构造。
+- HTTP handler 创建已从旧 kind/deps 分发改为按业务入口构造。
 - HTTP public `HttpDependencies` 已删除，基础服务、协议只读诊断和媒体源分别从
   `Runtime`、`ServiceRegistry`、`MediaSourceRegistry` 获取。
 - HTTP system overview 不再保存内部只读聚合包，基础状态现场从

@@ -360,11 +360,10 @@ HttpResponse BuildWhepDeleteResponse(IWebrtc *webrtc,
 
 class WebrtcHttpHandler : public IHttpHandler {
 public:
-    explicit WebrtcHttpHandler(
-        const HttpMediaHandlerRefs &refs)
-        : access_(refs.access),
-          device_(refs.device),
-          webrtc_(refs.webrtc) {}
+    WebrtcHttpHandler(HttpAccess *access,
+                      DeviceMedia *device,
+                      IWebrtc *webrtc)
+        : access_(access), device_(device), webrtc_(webrtc) {}
 
     void RegisterRoutes(IHttpRouter &router) override {
         if (webrtc_ != nullptr) {
@@ -458,10 +457,12 @@ private:
     IWebrtc *webrtc_ = nullptr;
 };
 
-std::unique_ptr<IHttpHandler> MakeWebrtcHandler(
-    const HttpMediaHandlerRefs &refs) {
+std::unique_ptr<IHttpHandler> CreateWebrtcHttpHandler(
+    HttpAccess *access,
+    DeviceMedia *device,
+    IWebrtc *webrtc) {
     return std::unique_ptr<IHttpHandler>(
-        new WebrtcHttpHandler(refs));
+        new WebrtcHttpHandler(access, device, webrtc));
 }
 
 }  // namespace live_stream

@@ -22,32 +22,21 @@ public:
         ConnectionId connection_id, const HttpRequest &request) = 0;
 };
 
-enum class HttpMediaHandlerKind {
-    kHls = 0,
-    kWebrtc,
-};
-
-struct HttpMediaHandlerRefs {
-    HttpAccess *access = nullptr;
-    DeviceMedia *device = nullptr;
-    MediaStreams *media_streams = nullptr;
-    IWebrtc *webrtc = nullptr;
-};
-
-std::unique_ptr<IHttpHandler> CreateHttpHandler(
-    HttpMediaHandlerKind kind,
-    const HttpMediaHandlerRefs &refs);
-
-struct StreamingHttpHandlerRefs {
-    HttpAccess *access = nullptr;
-    HttpMediaWriter *writer = nullptr;
-    DeviceMedia *device = nullptr;
-    MediaStreams *media_streams = nullptr;
-    event::EventCenter *event = nullptr;
-};
+std::unique_ptr<IHttpHandler> CreateHlsHttpHandler(
+    HttpAccess *access,
+    DeviceMedia *device,
+    MediaStreams *media_streams);
+std::unique_ptr<IHttpHandler> CreateWebrtcHttpHandler(
+    HttpAccess *access,
+    DeviceMedia *device,
+    IWebrtc *webrtc);
 
 std::unique_ptr<IStreamingHttpHandler> CreateStreamingHttpHandler(
-    const StreamingHttpHandlerRefs &refs);
+    HttpAccess *access,
+    HttpMediaWriter *writer,
+    DeviceMedia *device,
+    MediaStreams *media_streams,
+    event::EventCenter *event);
 
 }  // namespace live_stream
 

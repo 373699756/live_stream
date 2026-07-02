@@ -274,23 +274,17 @@ void HttpImpl::InitializeMediaHandlers(DeviceMedia *device,
                           ServiceRegistry::Rtsp(),
                           ServiceRegistry::Webrtc(),
                           ServiceRegistry::NetStat(), this}));
-    const HttpMediaHandlerRefs http_media_handler_refs = {
-        this, device, media_streams, webrtc};
-    const HttpMediaHandlerKind media_handlers[] = {
-        HttpMediaHandlerKind::kHls,
-        HttpMediaHandlerKind::kWebrtc,
-    };
-    for (HttpMediaHandlerKind kind : media_handlers) {
-        handlers_.push_back(
-            CreateHttpHandler(kind, http_media_handler_refs));
-    }
+    handlers_.push_back(
+        CreateHlsHttpHandler(this, device, media_streams));
+    handlers_.push_back(
+        CreateWebrtcHttpHandler(this, device, webrtc));
 }
 
 void HttpImpl::InitializeStreamingHandler(DeviceMedia *device,
                                           MediaStreams *media_streams,
                                           event::EventCenter *event) {
     streaming_handler_ = CreateStreamingHttpHandler(
-        {this, server_.get(), device, media_streams, event});
+        this, server_.get(), device, media_streams, event);
 }
 
 void HttpImpl::RegisterRoutes() {
