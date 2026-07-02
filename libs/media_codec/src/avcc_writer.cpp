@@ -20,6 +20,19 @@ struct H265ProfileTierLevel {
     bool temporal_id_nested = true;
 };
 
+H265ProfileTierLevel DefaultH265MainProfile() {
+    H265ProfileTierLevel profile;
+    profile.profile_byte = 0x01;
+    profile.compatibility_flags.assign(4, '\0');
+    profile.compatibility_flags[0] = static_cast<char>(0x60);
+    profile.constraint_flags.assign(6, '\0');
+    profile.constraint_flags[0] = static_cast<char>(0xb0);
+    profile.level_idc = 0x5d;
+    profile.max_sub_layers_minus1 = 0;
+    profile.temporal_id_nested = true;
+    return profile;
+}
+
 std::string H265NalRbsp(const std::string &nal_unit) {
     std::string rbsp;
     if (nal_unit.size() <= 2) {
@@ -227,9 +240,9 @@ bool BuildH265HvccRecord(const std::string &vps,
     }
     record->clear();
     byte_writer::AppendU8(record, 1);
-    H265ProfileTierLevel profile;
+    H265ProfileTierLevel profile = DefaultH265MainProfile();
     if (!ExtractH265ProfileFromVps(vps, &profile)) {
-        return false;
+        profile = DefaultH265MainProfile();
     }
     AppendH265ProfileTierLevel(profile, record);
     if (codec_string != nullptr) {
