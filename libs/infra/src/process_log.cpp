@@ -102,7 +102,20 @@ std::string BuildLine(LogLevel level,
 }
 
 bool ShouldColorConsoleLocked() {
-    return g_config.console_color && isatty(STDERR_FILENO) != 0;
+    return g_config.console_color &&
+           (isatty(STDOUT_FILENO) != 0 || isatty(STDERR_FILENO) != 0);
+}
+
+std::FILE* ConsoleOutputForLevel(LogLevel level) {
+    return static_cast<int>(level) >= static_cast<int>(LogLevel::kWarn)
+               ? stderr
+               : stdout;
+}
+
+int ConsoleFdForLevel(LogLevel level) {
+    return static_cast<int>(level) >= static_cast<int>(LogLevel::kWarn)
+               ? STDERR_FILENO
+               : STDOUT_FILENO;
 }
 
 uint64_t CurrentLogFileSize() {
@@ -162,16 +175,18 @@ void RotateFileIfNeededLocked() {
 
 void WriteLineLocked(LogLevel level, const std::string& line) {
     if (g_config.console_output) {
-        if (ShouldColorConsoleLocked()) {
+        std::FILE* console = ConsoleOutputForLevel(level);
+        if (ShouldColorConsoleLocked() &&
+            isatty(ConsoleFdForLevel(level)) != 0) {
             const char* color = ConsoleColorForLevel(level);
-            std::fwrite(color, 1, std::strlen(color), stderr);
-            std::fwrite(line.data(), 1, line.size(), stderr);
+            std::fwrite(color, 1, std::strlen(color), console);
+            std::fwrite(line.data(), 1, line.size(), console);
             std::fwrite(kConsoleColorReset, 1, std::strlen(kConsoleColorReset),
-                        stderr);
-            std::fflush(stderr);
+                        console);
+            std::fflush(console);
         } else {
-            std::fwrite(line.data(), 1, line.size(), stderr);
-            std::fflush(stderr);
+            std::fwrite(line.data(), 1, line.size(), console);
+            std::fflush(console);
         }
     }
 
