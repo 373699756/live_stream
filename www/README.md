@@ -108,7 +108,10 @@ or the WebRTC implementation. MJPEG preview uses the backend-provided
 
 `GET /api/media/streams` is the runtime source of truth for preview state.
 `GET /api/media/capabilities` is the runtime source of truth for video and
-image form capability limits.
+image form capability limits. When a stream reports `available: false`, the
+backend returns only the stream id, availability flag, and empty option lists;
+numeric video limits such as `fps`, `bitrate_kbps`, and `gop` are present only
+for available stream pipelines.
 `GET /api/media/streams/{stream}/urls` returns all playback URLs:
 
 - HLS: `/live/{stream}/hls/index.m3u8`

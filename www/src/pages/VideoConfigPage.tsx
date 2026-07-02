@@ -17,6 +17,7 @@ export function VideoConfigPage() {
         config,
         setConfig,
         capabilities,
+        capabilitiesError,
         statuses,
         previewUrls,
         reloadConfig,
@@ -76,7 +77,7 @@ export function VideoConfigPage() {
         roiEditor.cancelDraw();
     };
     const activeStream = config.streams[active];
-    const activeCapabilities = capabilities.streams[active];
+    const activeCapabilities = capabilities?.streams[active] ?? null;
     const previewStatuses = statuses.map((status) => ({
         ...status,
         resolution: config.streams[status.stream].resolution,
@@ -89,11 +90,11 @@ export function VideoConfigPage() {
         roiEditor.reset();
         setSaved('已恢复默认值，保存后生效');
     };
-    const activeSupported = isStreamSupported(
-        config.streams[active],
-        activeCapabilities,
-    );
+    const activeSupported =
+        activeCapabilities !== null &&
+        isStreamSupported(config.streams[active], activeCapabilities);
     const allSupported =
+        capabilities !== null &&
         (capabilities.streams.main.available === false ||
             isStreamSupported(
                 config.streams.main,
@@ -157,21 +158,29 @@ export function VideoConfigPage() {
                     <button
                         type="button"
                         className={active === 'sub' ? 'active' : ''}
-                        disabled={capabilities.streams.sub.available === false}
+                        disabled={
+                            capabilities?.streams.sub.available === false
+                        }
                         onClick={() => changeActiveStream('sub')}
                     >
                         子码流
                     </button>
                 </div>
-                <VideoStreamForm
-                    activeRoiRegionIndex={roiEditor.activeRegionIndex}
-                    stream={config.streams[active]}
-                    capabilities={capabilities.streams[active]}
-                    roiDrawing={roiEditor.drawing}
-                    onChange={(stream) => updateStream(active, stream)}
-                    onRoiRegionSelect={roiEditor.selectRegion}
-                    onStartRoiDraw={roiEditor.startDraw}
-                />
+                {activeCapabilities ? (
+                    <VideoStreamForm
+                        activeRoiRegionIndex={roiEditor.activeRegionIndex}
+                        stream={config.streams[active]}
+                        capabilities={activeCapabilities}
+                        roiDrawing={roiEditor.drawing}
+                        onChange={(stream) => updateStream(active, stream)}
+                        onRoiRegionSelect={roiEditor.selectRegion}
+                        onStartRoiDraw={roiEditor.startDraw}
+                    />
+                ) : (
+                    <div className="status-note error-note">
+                        {capabilitiesError || '媒体能力加载中'}
+                    </div>
+                )}
                 <div className="form-actions">
                     <button type="button" onClick={resetDefault}>
                         恢复默认
@@ -185,13 +194,18 @@ export function VideoConfigPage() {
                         {saving ? '保存中' : '保存'}
                     </button>
                 </div>
-                {!activeSupported && (
+                {activeCapabilities !== null && !activeSupported && (
                     <div className="save-hint">
                         当前码流包含设备不支持的参数。
                     </div>
                 )}
                 {saved && <div className="save-hint">{saved}</div>}
                 {error && <div className="status-note error-note">{error}</div>}
+                {activeCapabilities !== null && capabilitiesError && (
+                    <div className="status-note error-note">
+                        {capabilitiesError}
+                    </div>
+                )}
             </section>
             <VideoPreview
                 stream={active}

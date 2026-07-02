@@ -25,7 +25,7 @@ interface RoiDrawTarget {
 interface UseVideoRoiEditorOptions {
     activeStreamName: StreamName;
     config: VideoConfig | null;
-    capabilities: MediaCapabilities;
+    capabilities: MediaCapabilities | null;
     updateStream: (name: StreamName, stream: VideoStreamConfig) => void;
 }
 
@@ -66,7 +66,7 @@ export function useVideoRoiEditor({
 
     const activeStream = config?.streams[activeStreamName] ?? null;
     const activeRegions = activeStream?.roi?.regions ?? [];
-    const activeCapabilities = capabilities.streams[activeStreamName];
+    const activeCapabilities = capabilities?.streams[activeStreamName] ?? null;
     const activeRegionIndex =
         drawTarget?.stream === activeStreamName &&
         drawTarget.regionIndex === activeRegions.length
@@ -80,6 +80,7 @@ export function useVideoRoiEditor({
               : 0;
     const supported =
         activeStream !== null &&
+        activeCapabilities !== null &&
         activeCapabilities.available !== false &&
         Boolean(activeCapabilities.roi_supported) &&
         (activeStream.codec === 'h264' || activeStream.codec === 'h265');
@@ -103,7 +104,7 @@ export function useVideoRoiEditor({
         if (!supported || !activeStream) {
             return;
         }
-        const maxRegions = activeCapabilities.max_roi_regions || 0;
+        const maxRegions = activeCapabilities?.max_roi_regions || 0;
         if (
             index > activeRegions.length ||
             (index === activeRegions.length && activeRegions.length >= maxRegions)
@@ -126,7 +127,7 @@ export function useVideoRoiEditor({
         if (!supported) {
             return;
         }
-        const maxRegions = activeCapabilities.max_roi_regions || 0;
+        const maxRegions = activeCapabilities?.max_roi_regions || 0;
         if (
             index > activeRegions.length ||
             (index === activeRegions.length && activeRegions.length >= maxRegions)

@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { mockMediaCapabilities } from '../api/mockVideo';
 import { getMediaCapabilities } from '../api/video';
 import type { MediaCapabilities, StreamName } from '../api/types';
 import { useMediaStreamsInfo } from './useMediaStreamsInfo';
@@ -11,9 +10,9 @@ export function usePreviewMetadata(
     selectedStream?: StreamName,
     refreshIntervalMs = defaultRefreshIntervalMs,
 ) {
-    const [capabilities, setCapabilities] = useState<MediaCapabilities>(
-        mockMediaCapabilities,
-    );
+    const [capabilities, setCapabilities] =
+        useState<MediaCapabilities | null>(null);
+    const [capabilitiesError, setCapabilitiesError] = useState('');
     const { statuses, previewUrls, refreshStatuses } = useMediaStreamsInfo({
         selectedStream,
         refreshIntervalMs,
@@ -27,11 +26,14 @@ export function usePreviewMetadata(
             .then((nextCapabilities) => {
                 if (mounted) {
                     setCapabilities(nextCapabilities);
+                    setCapabilitiesError('');
                 }
             })
-            .catch(() => {
+            .catch((err: unknown) => {
                 if (mounted) {
-                    setCapabilities(mockMediaCapabilities);
+                    setCapabilitiesError(
+                        err instanceof Error ? err.message : '加载媒体能力失败',
+                    );
                 }
             });
         return () => {
@@ -39,5 +41,11 @@ export function usePreviewMetadata(
         };
     }, []);
 
-    return { capabilities, statuses, previewUrls, refreshStatuses };
+    return {
+        capabilities,
+        capabilitiesError,
+        statuses,
+        previewUrls,
+        refreshStatuses,
+    };
 }

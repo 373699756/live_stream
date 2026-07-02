@@ -20,6 +20,7 @@ export function ImageConfigPage() {
         statuses,
         previewUrls,
         imageInfo,
+        capabilitiesError,
         save,
         reset,
         savedMsg,
@@ -27,7 +28,8 @@ export function ImageConfigPage() {
         saving,
         error,
     } = useImageConfig(previewStream);
-    const capabilities: ImageCapabilities = mediaCapabilities.image;
+    const capabilities: ImageCapabilities | null =
+        mediaCapabilities?.image ?? null;
 
     if (loading) {
         return <div className="panel">加载图像配置...</div>;
@@ -82,33 +84,41 @@ export function ImageConfigPage() {
                         <p>调整基础画质参数，运行态应用由后端图像管线完成。</p>
                     </div>
                 </div>
-                <ImagePrimarySettings
-                    capabilities={capabilities}
-                    config={config}
-                    onBasicChange={updateBasic}
-                    onStrategyEnabledChange={updateStrategyEnabled}
-                    onStrategyModeChange={updateStrategyMode}
-                    strategyEnabled={strategyEnabled}
-                    imageInfo={imageInfo}
-                />
-                <ImageAdvancedSettings
-                    capabilities={capabilities}
-                    config={config}
-                    onColorModeChange={updateColorMode}
-                    onLensCorrectionChange={(lensCorrection) =>
-                        setConfig({
-                            ...config,
-                            lens_correction: lensCorrection,
-                        })
-                    }
-                    onOrientationChange={(orientation) =>
-                        setConfig({ ...config, orientation })
-                    }
-                    onSectionChange={updateSection}
-                    onStabilizationChange={(stabilization) =>
-                        setConfig({ ...config, stabilization })
-                    }
-                />
+                {capabilities ? (
+                    <>
+                        <ImagePrimarySettings
+                            capabilities={capabilities}
+                            config={config}
+                            onBasicChange={updateBasic}
+                            onStrategyEnabledChange={updateStrategyEnabled}
+                            onStrategyModeChange={updateStrategyMode}
+                            strategyEnabled={strategyEnabled}
+                            imageInfo={imageInfo}
+                        />
+                        <ImageAdvancedSettings
+                            capabilities={capabilities}
+                            config={config}
+                            onColorModeChange={updateColorMode}
+                            onLensCorrectionChange={(lensCorrection) =>
+                                setConfig({
+                                    ...config,
+                                    lens_correction: lensCorrection,
+                                })
+                            }
+                            onOrientationChange={(orientation) =>
+                                setConfig({ ...config, orientation })
+                            }
+                            onSectionChange={updateSection}
+                            onStabilizationChange={(stabilization) =>
+                                setConfig({ ...config, stabilization })
+                            }
+                        />
+                    </>
+                ) : (
+                    <div className="status-note error-note">
+                        {capabilitiesError || '媒体能力加载中'}
+                    </div>
+                )}
                 <div className="form-actions">
                     <button type="button" onClick={reset}>
                         恢复默认
@@ -116,7 +126,7 @@ export function ImageConfigPage() {
                     <button
                         type="button"
                         className="primary"
-                        disabled={saving}
+                        disabled={saving || !capabilities}
                         onClick={() => void save(config)}
                     >
                         {saving ? '保存中' : '保存'}

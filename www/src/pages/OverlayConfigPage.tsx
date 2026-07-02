@@ -85,6 +85,7 @@ export function OverlayConfigPage() {
     const {
         config: videoConfig,
         capabilities,
+        capabilitiesError,
         statuses,
         previewUrls,
         loading: videoLoading,
@@ -94,8 +95,8 @@ export function OverlayConfigPage() {
         ? normalizeOverlayConfig(config)
         : mockOverlayConfig;
     const streamConfig = videoConfig?.streams[activeStream];
-    const capability = capabilities.streams[activeStream];
-    const fallbackResolution = capability.resolutions[0]
+    const capability = capabilities?.streams[activeStream] ?? null;
+    const fallbackResolution = capability?.resolutions[0]
         ? resolutionValue(capability.resolutions[0])
         : activeStream === 'main'
           ? '1920x1080'
@@ -261,6 +262,11 @@ export function OverlayConfigPage() {
                     </FormField>
                 </div>
                 {maskEditor.controls}
+                {capabilitiesError && (
+                    <div className="status-note error-note">
+                        {capabilitiesError}
+                    </div>
+                )}
             </section>
 
             <div className="overlay-preview-stack">

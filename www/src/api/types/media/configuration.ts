@@ -57,13 +57,13 @@ export interface VideoStreamCapabilities {
     available: boolean;
     codecs: CodecCapability[];
     resolutions: VideoResolutionCapability[];
-    fps: NumberRange;
-    bitrate_kbps: NumberRange;
+    fps?: NumberRange;
+    bitrate_kbps?: NumberRange;
     rate_control: VideoStreamConfig['rate_control'][];
-    gop: NumberRange;
-    smart_codec: boolean;
-    roi_supported: boolean;
-    max_roi_regions: number;
+    gop?: NumberRange;
+    smart_codec?: boolean;
+    roi_supported?: boolean;
+    max_roi_regions?: number;
 }
 
 export interface NumericControlCapability {

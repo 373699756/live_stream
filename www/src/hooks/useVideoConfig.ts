@@ -12,8 +12,13 @@ const configTimeoutMs = 5000;
 
 export function useVideoConfig(selectedStream?: StreamName) {
     const [config, setConfig] = useState<VideoConfig | null>(null);
-    const { capabilities, statuses, previewUrls, refreshStatuses } =
-        usePreviewMetadata(selectedStream);
+    const {
+        capabilities,
+        capabilitiesError,
+        statuses,
+        previewUrls,
+        refreshStatuses,
+    } = usePreviewMetadata(selectedStream);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const clearError = () => setError('');
@@ -64,6 +69,7 @@ export function useVideoConfig(selectedStream?: StreamName) {
         config,
         setConfig,
         capabilities,
+        capabilitiesError,
         statuses,
         previewUrls,
         reloadConfig,

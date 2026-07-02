@@ -3,6 +3,13 @@ import type {
     VideoStreamCapabilities,
     VideoStreamConfig,
 } from './types/media/configuration';
+import type { NumberRange } from './types/core';
+
+type RangedVideoStreamCapabilities = VideoStreamCapabilities & {
+    bitrate_kbps: NumberRange;
+    fps: NumberRange;
+    gop: NumberRange;
+};
 
 export function codecSupportsSmartP(
     codec: VideoStreamConfig['codec'],
@@ -37,10 +44,24 @@ export function isResolutionSupported(
     );
 }
 
+export function hasVideoControlRanges(
+    capabilities: VideoStreamCapabilities,
+): capabilities is RangedVideoStreamCapabilities {
+    return Boolean(
+        capabilities.fps && capabilities.bitrate_kbps && capabilities.gop,
+    );
+}
+
 export function isStreamSupported(
     stream: VideoStreamConfig,
     capabilities: VideoStreamCapabilities,
 ): boolean {
+    if (
+        capabilities.available === false ||
+        !hasVideoControlRanges(capabilities)
+    ) {
+        return false;
+    }
     const smartCodecEnabled =
         stream.smart_codec || stream.gop_mode === 'smart_p';
     const roiEnabled = Boolean(
@@ -51,9 +72,10 @@ export function isStreamSupported(
     const streamHeight = Number(heightText);
     const roiSupported =
         !roiEnabled ||
-        (Boolean(capabilities.roi_supported) &&
+            (Boolean(capabilities.roi_supported) &&
             (stream.codec === 'h264' || stream.codec === 'h265') &&
-            stream.roi.regions.length <= capabilities.max_roi_regions &&
+            stream.roi.regions.length <=
+                (capabilities.max_roi_regions ?? 0) &&
             stream.roi.regions.every(
                 (region) =>
                     region.width > 0 &&
@@ -66,7 +88,6 @@ export function isStreamSupported(
                     region.y + region.height <= streamHeight,
             ));
     return (
-        capabilities.available !== false &&
         capabilities.codecs.some((item) => item.codec === stream.codec) &&
         isResolutionSupported(stream, capabilities) &&
         stream.fps >= capabilities.fps.min &&
@@ -77,7 +98,7 @@ export function isStreamSupported(
         stream.gop >= capabilities.gop.min &&
         stream.gop <= capabilities.gop.max &&
         (!smartCodecEnabled || codecSupportsSmartP(stream.codec)) &&
-        (!smartCodecEnabled || capabilities.smart_codec) &&
+        (!smartCodecEnabled || Boolean(capabilities.smart_codec)) &&
         roiSupported
     );
 }

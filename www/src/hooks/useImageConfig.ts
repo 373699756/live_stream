@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
 import { getImageConfig, getImageInfo, saveImageConfig } from '../api/image';
 import type { ImageConfig, ImageInfo, StreamName } from '../api/types';
 import { cloneDefaultConfig } from '../api/configDefaults';
-import { mockImageConfig, mockImageInfo } from '../api/mockImage';
+import { mockImageConfig } from '../api/mockImage';
 import { usePreviewMetadata } from './usePreviewMetadata';
 
 const configTimeoutMs = 5000;
@@ -15,9 +15,9 @@ const infoTimeoutMs = 1800;
 
 export function useImageConfig(selectedStream?: StreamName) {
     const [config, setConfig] = useState<ImageConfig | null>(null);
-    const { capabilities, statuses, previewUrls } =
+    const { capabilities, capabilitiesError, statuses, previewUrls } =
         usePreviewMetadata(selectedStream);
-    const [imageInfo, setImageInfo] = useState<ImageInfo>(mockImageInfo);
+    const [imageInfo, setImageInfo] = useState<ImageInfo | null>(null);
     const [savedMsg, setSavedMsg] = useState('');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -60,11 +60,7 @@ export function useImageConfig(selectedStream?: StreamName) {
                         setImageInfo(nextInfo);
                     }
                 })
-                .catch(() => {
-                    if (mounted) {
-                        setImageInfo(mockImageInfo);
-                    }
-                });
+                .catch(() => undefined);
         };
         refreshStrategy();
         const timer = window.setInterval(refreshStrategy, 2000);
@@ -100,6 +96,7 @@ export function useImageConfig(selectedStream?: StreamName) {
         config,
         setConfig,
         capabilities,
+        capabilitiesError,
         statuses,
         previewUrls,
         imageInfo,

@@ -1,5 +1,6 @@
 import {
     codecSupportsSmartP,
+    hasVideoControlRanges,
     isStreamSupported,
     resolutionLabel,
     resolutionValue,
@@ -60,6 +61,8 @@ export function VideoStreamForm({
         onChange(next);
     };
     const available = capabilities.available !== false;
+    const controlRangesAvailable =
+        available && hasVideoControlRanges(capabilities);
     const supported = isStreamSupported(stream, capabilities);
     const supportedResolution = capabilities.resolutions.some(
         (item) => resolutionValue(item) === stream.resolution,
@@ -143,13 +146,15 @@ export function VideoStreamForm({
             <FormField label="帧率">
                 <input
                     type="number"
-                    min={capabilities.fps.min}
-                    max={capabilities.fps.max}
-                    disabled={!available}
+                    min={capabilities.fps?.min}
+                    max={capabilities.fps?.max}
+                    disabled={!controlRangesAvailable}
                     value={stream.fps}
                     aria-invalid={
-                        stream.fps < capabilities.fps.min ||
-                        stream.fps > capabilities.fps.max
+                        controlRangesAvailable &&
+                        capabilities.fps !== undefined &&
+                        (stream.fps < capabilities.fps.min ||
+                            stream.fps > capabilities.fps.max)
                     }
                     onChange={(e) => patch({ fps: Number(e.target.value) })}
                 />
@@ -157,13 +162,17 @@ export function VideoStreamForm({
             <FormField label="码率 kbps">
                 <input
                     type="number"
-                    min={capabilities.bitrate_kbps.min}
-                    max={capabilities.bitrate_kbps.max}
-                    disabled={!available}
+                    min={capabilities.bitrate_kbps?.min}
+                    max={capabilities.bitrate_kbps?.max}
+                    disabled={!controlRangesAvailable}
                     value={stream.bitrate_kbps}
                     aria-invalid={
-                        stream.bitrate_kbps < capabilities.bitrate_kbps.min ||
-                        stream.bitrate_kbps > capabilities.bitrate_kbps.max
+                        controlRangesAvailable &&
+                        capabilities.bitrate_kbps !== undefined &&
+                        (stream.bitrate_kbps <
+                            capabilities.bitrate_kbps.min ||
+                            stream.bitrate_kbps >
+                                capabilities.bitrate_kbps.max)
                     }
                     onChange={(e) =>
                         patch({ bitrate_kbps: Number(e.target.value) })
@@ -220,13 +229,15 @@ export function VideoStreamForm({
                 <FormField label="GOP">
                     <input
                         type="number"
-                        min={capabilities.gop.min}
-                        max={capabilities.gop.max}
-                        disabled={!available}
+                        min={capabilities.gop?.min}
+                        max={capabilities.gop?.max}
+                        disabled={!controlRangesAvailable}
                         value={stream.gop}
                         aria-invalid={
-                            stream.gop < capabilities.gop.min ||
-                            stream.gop > capabilities.gop.max
+                            controlRangesAvailable &&
+                            capabilities.gop !== undefined &&
+                            (stream.gop < capabilities.gop.min ||
+                                stream.gop > capabilities.gop.max)
                         }
                         onChange={(e) => patch({ gop: Number(e.target.value) })}
                     />
@@ -246,7 +257,10 @@ export function VideoStreamForm({
             {!available && (
                 <div className="save-hint">当前固件未启用该码流管线。</div>
             )}
-            {available && !supported && (
+            {available && !controlRangesAvailable && (
+                <div className="save-hint">设备未返回完整的码流能力。</div>
+            )}
+            {available && controlRangesAvailable && !supported && (
                 <div className="save-hint">
                     当前参数不在设备能力范围内，请修正后保存。
                 </div>

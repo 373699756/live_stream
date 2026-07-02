@@ -35,7 +35,7 @@ interface ImagePrimarySettingsProps {
     onStrategyEnabledChange: (enabled: boolean) => void;
     onStrategyModeChange: (mode: string) => void;
     strategyEnabled: boolean;
-    imageInfo: ImageInfo;
+    imageInfo: ImageInfo | null;
 }
 
 export function ImagePrimarySettings({
@@ -47,6 +47,8 @@ export function ImagePrimarySettings({
     strategyEnabled,
     imageInfo,
 }: ImagePrimarySettingsProps) {
+    const infoActiveText =
+        imageInfo === null ? '-' : imageInfo.active ? '运行中' : '未运行';
     return (
         <div className="form-grid image-settings-grid image-primary-grid">
             <div className="form-section-title">自动画质策略</div>
@@ -71,23 +73,23 @@ export function ImagePrimarySettings({
             <div className="image-info image-info-strip">
                 <span>
                     <strong>状态</strong>
-                    {imageInfo.active ? '运行中' : '未运行'}
+                    {infoActiveText}
                 </span>
                 <span>
                     <strong>场景</strong>
-                    {tierLabel(imageInfo.tier)}
+                    {tierLabel(imageInfo?.tier ?? '')}
                 </span>
                 <span>
                     <strong>模式</strong>
-                    {strategyModeLabel(imageInfo.mode)}
+                    {strategyModeLabel(imageInfo?.mode ?? '')}
                 </span>
                 <span>
                     <strong>ISO</strong>
-                    {imageInfo.exposure_valid ? imageInfo.iso : '-'}
+                    {imageInfo?.exposure_valid ? imageInfo.iso : '-'}
                 </span>
                 <span>
                     <strong>曝光</strong>
-                    {imageInfo.exposure_valid
+                    {imageInfo?.exposure_valid
                         ? `${imageInfo.exposure_time_us} us`
                         : '-'}
                 </span>
@@ -97,23 +99,23 @@ export function ImagePrimarySettings({
                 <div className="image-info image-info-grid">
                     <span>
                         <strong>饱和</strong>
-                        {imageInfo.saturation}
+                        {imageInfo?.saturation ?? '-'}
                     </span>
                     <span>
                         <strong>锐度</strong>
-                        {imageInfo.sharpness}
+                        {imageInfo?.sharpness ?? '-'}
                     </span>
                     <span>
                         <strong>2DNR</strong>
-                        {imageInfo.denoise_2d}
+                        {imageInfo?.denoise_2d ?? '-'}
                     </span>
                     <span>
                         <strong>3DNR</strong>
-                        {imageInfo.denoise_3d}
+                        {imageInfo?.denoise_3d ?? '-'}
                     </span>
                     <span>
                         <strong>Gamma</strong>
-                        {imageInfo.gamma}
+                        {imageInfo?.gamma ?? '-'}
                     </span>
                 </div>
             </details>

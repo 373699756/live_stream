@@ -87,22 +87,7 @@ Json VideoStreamCapabilitiesToJson(
     root["codecs"] = Json::array();
     root["resolutions"] = Json::array();
     root["rate_control"] = Json::array();
-    root["smart_codec"] = false;
-    root["roi_supported"] = false;
-    root["max_roi_regions"] = 0;
     if (capabilities == nullptr) {
-        Json fps = Json::object();
-        fps["min"] = 0;
-        fps["max"] = 0;
-        root["fps"] = fps;
-        Json bitrate = Json::object();
-        bitrate["min"] = 0;
-        bitrate["max"] = 0;
-        root["bitrate_kbps"] = bitrate;
-        Json gop = Json::object();
-        gop["min"] = 0;
-        gop["max"] = 0;
-        root["gop"] = gop;
         return root;
     }
 
