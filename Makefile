@@ -3,7 +3,6 @@
 ROOT_DIR := $(CURDIR)
 BUILD_DIR ?= build
 LIB_DIR := $(BUILD_DIR)/lib
-OBJ_DIR := $(BUILD_DIR)/obj/app
 BIN_DIR := $(BUILD_DIR)/bin
 THIRDPARTY_DIR := 3rdparty
 THIRDPARTY_SRC := $(THIRDPARTY_DIR)/open_src
@@ -21,10 +20,24 @@ include $(ROOT_DIR)/libs/hisi_vendor/toolchain_hi3516dv300.mk
 
 ifeq ($(origin CXX),default)
 CXX := $(CROSS_COMPILE)g++
+else ifneq ($(strip $(CROSS_COMPILE)),)
+ifneq ($(filter $(CROSS_COMPILE)%,$(notdir $(CXX))),$(notdir $(CXX)))
+$(error CXX='$(CXX)' does not match CROSS_COMPILE='$(CROSS_COMPILE)'. Use a HiSilicon toolchain or unset custom CXX/AR in your environment.)
+endif
 endif
 ifeq ($(origin AR),default)
 AR := $(CROSS_COMPILE)ar
+else ifneq ($(strip $(CROSS_COMPILE)),)
+ifneq ($(filter $(CROSS_COMPILE)%,$(notdir $(AR))),$(notdir $(AR)))
+$(error AR='$(AR)' does not match CROSS_COMPILE='$(CROSS_COMPILE)'. Use a HiSilicon toolchain or unset custom AR in your environment.)
 endif
+endif
+
+TOOLCHAIN_BUILD_PREFIX := $(strip $(if $(CROSS_COMPILE),$(CROSS_COMPILE),$(patsubst %g++,%,$(notdir $(CXX)))))
+ifeq ($(TOOLCHAIN_BUILD_PREFIX),)
+TOOLCHAIN_BUILD_PREFIX := native
+endif
+OBJ_DIR := $(BUILD_DIR)/obj/$(TOOLCHAIN_BUILD_PREFIX)app
 
 OPENSSL_LIBS := $(THIRDPARTY_INSTALL)/lib/libssl.a $(THIRDPARTY_INSTALL)/lib/libcrypto.a
 SRTP_LIBS := $(THIRDPARTY_INSTALL)/lib/libsrtp2.a

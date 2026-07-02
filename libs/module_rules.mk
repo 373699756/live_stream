@@ -2,17 +2,30 @@ ROOT_DIR ?= $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/..)
 ROOT_DIR := $(ROOT_DIR)
 BUILD_DIR ?= $(ROOT_DIR)/build
 LIB_DIR := $(BUILD_DIR)/lib
-OBJ_DIR := $(BUILD_DIR)/obj/$(MODULE_NAME)
 TEST_DIR := $(BUILD_DIR)/tests
 RELEASE_VERSION ?= 1.0.5
 
 CROSS_COMPILE ?= arm-himix200-linux-
 ifeq ($(origin CXX),default)
 CXX := $(CROSS_COMPILE)g++
+else ifneq ($(strip $(CROSS_COMPILE)),)
+ifneq ($(filter $(CROSS_COMPILE)%,$(notdir $(CXX))),$(notdir $(CXX)))
+$(error CXX='$(CXX)' does not match CROSS_COMPILE='$(CROSS_COMPILE)'. Use a HiSilicon toolchain or unset custom CXX/AR in your environment.)
+endif
 endif
 ifeq ($(origin AR),default)
 AR := $(CROSS_COMPILE)ar
+else ifneq ($(strip $(CROSS_COMPILE)),)
+ifneq ($(filter $(CROSS_COMPILE)%,$(notdir $(AR))),$(notdir $(AR)))
+$(error AR='$(AR)' does not match CROSS_COMPILE='$(CROSS_COMPILE)'. Use a HiSilicon toolchain or unset custom AR in your environment.)
 endif
+endif
+
+TOOLCHAIN_BUILD_PREFIX := $(strip $(if $(CROSS_COMPILE),$(CROSS_COMPILE),$(patsubst %g++,%,$(notdir $(CXX)))))
+ifeq ($(TOOLCHAIN_BUILD_PREFIX),)
+TOOLCHAIN_BUILD_PREFIX := native
+endif
+OBJ_DIR := $(BUILD_DIR)/obj/$(TOOLCHAIN_BUILD_PREFIX)$(MODULE_NAME)
 
 CXXFLAGS += -std=c++17
 CXXFLAGS += -Wall -Wextra -Werror
