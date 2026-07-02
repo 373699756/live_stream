@@ -153,8 +153,6 @@ flowchart LR
 - `webrtcSupported` / `webrtcReady`
 - `active_subscriptions` / `preview_clients`
 - `lastDts`
-- `lastKeyframeRequestMs` / `lastKeyframeSeenMs`
-- `lastFirstFrameMs` / `lastProtocolReadyMs`
 - `lastResetReason`
 
 Web 通过 `GET /api/events` 订阅后端 SSE 事件，并在媒体状态变化时立即刷新

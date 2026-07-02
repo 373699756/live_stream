@@ -362,10 +362,6 @@ Json BuildMediaStreamResponse(StreamId stream_id,
     root["cached_bytes"] = stats.cached_bytes;
     root["hls_bytes"] = stream_info.hls_current_segment_size;
     root["last_dts"] = stream_info.last_dts_us;
-    root["last_keyframe_request_ms"] = 0;
-    root["last_keyframe_seen_ms"] = 0;
-    root["last_first_frame_ms"] = 0;
-    root["last_protocol_ready_ms"] = 0;
     root["last_reset_reason"] = stream_info.last_reset_reason;
     VideoStreamDisplayConfig display_config;
     if (ReadVideoStreamDisplayConfig(config, stream_id, &display_config)) {
