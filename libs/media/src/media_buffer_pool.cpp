@@ -30,7 +30,7 @@ public:
         if (blocks_ == nullptr) {
             return MediaBufferPoolStats();
         }
-        return blocks_->Info();
+        return blocks_->Stats();
     }
 
 private:

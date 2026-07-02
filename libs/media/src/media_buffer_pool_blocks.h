@@ -22,7 +22,7 @@ public:
     void ReturnBlock(uint32_t index);
 
     MediaBufferBuilder Acquire();
-    MediaBufferPoolStats Info() const;
+    MediaBufferPoolStats Stats() const;
 
 private:
     ~MediaBufferPoolBlocks();

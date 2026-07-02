@@ -117,7 +117,7 @@ MediaBufferBuilder MediaBufferPoolBlocks::Acquire() {
     return buffer;
 }
 
-MediaBufferPoolStats MediaBufferPoolBlocks::Info() const {
+MediaBufferPoolStats MediaBufferPoolBlocks::Stats() const {
     std::lock_guard<std::mutex> lock(mutex_);
     MediaBufferPoolStats info;
     info.block_bytes = block_bytes_;
