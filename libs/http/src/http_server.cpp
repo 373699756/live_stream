@@ -332,8 +332,8 @@ bool HttpServer::EnqueueStreamingChunk(ConnectionId connection_id,
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = sessions_.find(connection_id);
         if (iter == sessions_.end() || !iter->second->is_streaming()) {
-            Error(kHttpModuleName,
-                  "HTTP stream enqueue reject conn=%llu reason=closed",
+            Debug(kHttpModuleName,
+                  "HTTP stream enqueue skip conn=%llu reason=closed",
                   static_cast<unsigned long long>(connection_id));
             return false;
         }
@@ -353,8 +353,8 @@ bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
         std::lock_guard<std::mutex> guard(mutex_);
         auto iter = sessions_.find(connection_id);
         if (iter == sessions_.end() || !iter->second->is_streaming()) {
-            Error(kHttpModuleName,
-                  "HTTP stream enqueue reject conn=%llu reason=closed",
+            Debug(kHttpModuleName,
+                  "HTTP stream enqueue skip conn=%llu reason=closed",
                   static_cast<unsigned long long>(connection_id));
             return false;
         }
@@ -365,6 +365,18 @@ bool HttpServer::EnqueueStreamingSlices(ConnectionId connection_id,
         (void)MarkStreamingClosing(connection_id);
     }
     return enqueued;
+}
+
+bool HttpServer::IsConnectionOpen(ConnectionId connection_id) const {
+    bool session_open = false;
+    {
+        std::lock_guard<std::mutex> guard(mutex_);
+        session_open = sessions_.find(connection_id) != sessions_.end();
+    }
+    if (!session_open || socket_io_ == nullptr) {
+        return false;
+    }
+    return socket_io_->GetConnectionInfo(connection_id).open;
 }
 
 void HttpServer::SetCloseCallback(HttpMediaCloseCallback callback) {

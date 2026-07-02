@@ -389,19 +389,29 @@ private:
         if (start_status != HttpFlvSessionStartStatus::kStarted) {
             // Start() 失败时 stream 尚未 attach 到 MediaStreams，调用方仍拥有对象。
             delete stream;
-            Error(kHttpMediaModuleName,
-                  "HTTP-FLV close conn=%llu stream=%s reason=%s",
-                  static_cast<unsigned long long>(connection_id),
-                  MediaStreamIdToJson(stream_id),
-                  HttpFlvSessionStartStatusName(start_status));
+            const bool connection_open =
+                writer_ != nullptr && writer_->IsConnectionOpen(connection_id);
+            if (connection_open) {
+                Error(kHttpMediaModuleName,
+                      "HTTP-FLV close conn=%llu stream=%s reason=%s",
+                      static_cast<unsigned long long>(connection_id),
+                      MediaStreamIdToJson(stream_id),
+                      HttpFlvSessionStartStatusName(start_status));
+            } else {
+                Debug(kHttpMediaModuleName,
+                      "HTTP-FLV close conn=%llu stream=%s reason=closed "
+                      "stage=%s",
+                      static_cast<unsigned long long>(connection_id),
+                      MediaStreamIdToJson(stream_id),
+                      HttpFlvSessionStartStatusName(start_status));
+            }
             if (writer_ != nullptr &&
+                connection_open &&
                 HttpFlvSessionStartNeedsClose(start_status)) {
                 writer_->CloseConnection(connection_id);
                 return HttpStreamingRequestResult::kClosed;
             }
-            return start_status == HttpFlvSessionStartStatus::kNoSession
-                       ? HttpStreamingRequestResult::kFailed
-                       : HttpStreamingRequestResult::kClosed;
+            return HttpStreamingRequestResult::kClosed;
         }
 
         // GOP 不完整时 live attach 必须等下一个关键帧，否则客户端会从 P/B 帧开始
@@ -432,7 +442,7 @@ private:
         if (!writer_->AttachStreamClient(connection_id, client)) {
             (void)media_streams->DetachFlvClient(client_id);
             // DetachFlvClient 会释放 attach 时交给 MediaStreams 的 HttpFlvSession。
-            Error(kHttpMediaModuleName,
+            Debug(kHttpMediaModuleName,
                   "HTTP-FLV close conn=%llu stream=%s reason=closed",
                   static_cast<unsigned long long>(connection_id),
                   MediaStreamIdToJson(stream_id));

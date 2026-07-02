@@ -210,6 +210,19 @@ bool HttpResponseSender::SendStreamingNetSlices(
         return false;
     }
     if (!socket_io->SendSlices(connection_id, slices)) {
+        const SocketConnectionInfo connection_info =
+            socket_io->GetConnectionInfo(connection_id);
+        if (!connection_info.open) {
+            Debug(kHttpModuleName,
+                  "HTTP stream send skip conn=%llu reason=closed "
+                  "close_reason=%s size=%zu pending=%u",
+                  static_cast<unsigned long long>(connection_id),
+                  TcpCloseReasonName(connection_info.close_reason), size,
+                  pending_bytes);
+            CloseConnection(socket_io, connection_id,
+                            TcpCloseReason::kRemoteClose);
+            return false;
+        }
         Error(kHttpModuleName,
               "HTTP stream send failed conn=%llu size=%zu pending=%u",
               static_cast<unsigned long long>(connection_id), size,
