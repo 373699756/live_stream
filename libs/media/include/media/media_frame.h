@@ -16,6 +16,8 @@ struct MediaFrame {
     Codec codec = Codec::kH264;
     FrameType frame_type = FrameType::kP;
     FrameSequence sequence = 0;
+    uint32_t width = 0;
+    uint32_t height = 0;
     int64_t pts_us = 0;
     int64_t dts_us = 0;
     int64_t duration_us = 0;

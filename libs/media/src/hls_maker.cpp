@@ -312,7 +312,7 @@ std::string BuildMvhdBox() {
     return Mp4FullBox("mvhd", 0, 0, body);
 }
 
-std::string BuildTkhdBox() {
+std::string BuildTkhdBox(uint32_t width, uint32_t height) {
     std::string body;
     AppendU32(&body, 0);
     AppendU32(&body, 0);
@@ -333,8 +333,8 @@ std::string BuildTkhdBox() {
     for (uint32_t item : matrix) {
         AppendU32(&body, item);
     }
-    AppendU32(&body, 1920U << 16);
-    AppendU32(&body, 1080U << 16);
+    AppendU32(&body, width << 16);
+    AppendU32(&body, height << 16);
     return Mp4FullBox("tkhd", 0, 0x000007, body);
 }
 
@@ -378,7 +378,9 @@ std::string BuildDinfBox() {
     return Mp4Box("dinf", Mp4FullBox("dref", 0, 0, dref_body));
 }
 
-std::string BuildStsdBox(const std::string &hvcc_record) {
+std::string BuildStsdBox(const std::string &hvcc_record,
+                         uint32_t width,
+                         uint32_t height) {
     std::string sample;
     sample.append(6, '\0');
     AppendU16(&sample, 1);
@@ -387,8 +389,8 @@ std::string BuildStsdBox(const std::string &hvcc_record) {
     AppendU32(&sample, 0);
     AppendU32(&sample, 0);
     AppendU32(&sample, 0);
-    AppendU16(&sample, 1920);
-    AppendU16(&sample, 1080);
+    AppendU16(&sample, static_cast<uint16_t>(width));
+    AppendU16(&sample, static_cast<uint16_t>(height));
     AppendU32(&sample, 0x00480000);
     AppendU32(&sample, 0x00480000);
     AppendU32(&sample, 0);
@@ -404,9 +406,11 @@ std::string BuildStsdBox(const std::string &hvcc_record) {
     return Mp4FullBox("stsd", 0, 0, body);
 }
 
-std::string BuildStblBox(const std::string &hvcc_record) {
+std::string BuildStblBox(const std::string &hvcc_record,
+                         uint32_t width,
+                         uint32_t height) {
     std::string body;
-    body.append(BuildStsdBox(hvcc_record));
+    body.append(BuildStsdBox(hvcc_record, width, height));
     body.append(Mp4FullBox("stts", 0, 0, std::string(4, '\0')));
     body.append(Mp4FullBox("stsc", 0, 0, std::string(4, '\0')));
     body.append(Mp4FullBox("stsz", 0, 0, std::string(8, '\0')));
@@ -414,11 +418,13 @@ std::string BuildStblBox(const std::string &hvcc_record) {
     return Mp4Box("stbl", body);
 }
 
-std::string BuildInitSegment(const std::string &hvcc_record) {
+std::string BuildInitSegment(const std::string &hvcc_record,
+                             uint32_t width,
+                             uint32_t height) {
     std::string minf;
     minf.append(BuildVmhdBox());
     minf.append(BuildDinfBox());
-    minf.append(BuildStblBox(hvcc_record));
+    minf.append(BuildStblBox(hvcc_record, width, height));
 
     std::string mdia;
     mdia.append(BuildMdhdBox());
@@ -426,7 +432,7 @@ std::string BuildInitSegment(const std::string &hvcc_record) {
     mdia.append(Mp4Box("minf", minf));
 
     std::string trak;
-    trak.append(BuildTkhdBox());
+    trak.append(BuildTkhdBox(width, height));
     trak.append(Mp4Box("mdia", mdia));
 
     std::string trex_body;
@@ -450,6 +456,8 @@ std::string BuildStypBox() {
     AppendU32(&body, 0);
     body.append("msdh", 4);
     body.append("msix", 4);
+    body.append("cmfc", 4);
+    body.append("iso6", 4);
     return Mp4Box("styp", body);
 }
 
@@ -713,6 +721,13 @@ uint32_t AddHlsCachedBytes(uint32_t current, uint32_t bytes) {
     return current + bytes;
 }
 
+uint32_t Mp4TrackDimension(uint32_t value, uint32_t fallback) {
+    if (value == 0) {
+        return fallback;
+    }
+    return std::min<uint32_t>(value, 0xffffU);
+}
+
 }  // namespace
 
 HlsMaker::~HlsMaker() { Reset(); }
@@ -972,7 +987,11 @@ bool HlsMaker::AppendFrameToSegment(const FramePayload &payload,
                                                   &h265_codec_string)) {
                 return false;
             }
-            init_segment_ = MediaBufferFromString(BuildInitSegment(hvcc_record));
+            const uint32_t width = Mp4TrackDimension(frame.width, 1920);
+            const uint32_t height = Mp4TrackDimension(frame.height, 1080);
+            init_segment_ =
+                MediaBufferFromString(BuildInitSegment(hvcc_record, width,
+                                                       height));
             codec_string_ = h265_codec_string;
             if (!init_segment_.Valid()) {
                 return false;

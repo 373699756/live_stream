@@ -14,6 +14,7 @@ import { previewModeLabels, type PreviewMode } from './previewMode';
 
 const hlsStartupTimeoutMs = 8000;
 const hlsWarmupPollMs = 400;
+const hlsFatalErrorLimit = 2;
 const flvLiveEdgeCheckMs = 800;
 const flvLiveEdgeMaxLatencySec = 1.2;
 const flvLiveEdgeTargetLatencySec = 0.35;
@@ -202,6 +203,7 @@ export function startHlsPreview({
         autoFallback.setMode(fallbackMode);
     };
     let hlsPlayerLaunched = false;
+    let hlsFatalErrors = 0;
     const launchHlsPlayer = () => {
         if (hlsPlayerLaunched || !controls.isCurrentSession()) {
             return;
@@ -245,6 +247,15 @@ export function startHlsPreview({
                                 return;
                             }
                             const detail = hlsErrorDetails(args);
+                            ++hlsFatalErrors;
+                            if (hlsFatalErrors >= hlsFatalErrorLimit) {
+                                fallbackFromHlsFailure(
+                                    detail
+                                        ? `HLS 播放失败：${detail}`
+                                        : 'HLS 播放失败',
+                                );
+                                return;
+                            }
                             player.recoverMediaError?.();
                             player.startLoad?.();
                             if (!autoFallback.isSessionConnected()) {

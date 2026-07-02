@@ -25,6 +25,7 @@ struct VencStreamContext {
     int fd = -1;
     StreamId stream_id = StreamId::kMain;
     Codec codec = Codec::kH264;
+    VideoSize size;
 };
 
 struct VencPayloadInfo {
@@ -106,13 +107,13 @@ FrameType FrameTypeFromStream(const VENC_STREAM_S& stream, Codec codec) {
 }
 
 bool InitVencStreamContext(int32_t chn,
-                           StreamId stream_id,
-                           Codec codec,
+                           const VideoStreamConfig &stream_config,
                            VencStreamContext& context) {
     context.chn = chn;
     context.venc = static_cast<VENC_CHN>(chn);
-    context.stream_id = stream_id;
-    context.codec = codec;
+    context.stream_id = stream_config.stream_id;
+    context.codec = stream_config.codec;
+    context.size = stream_config.size;
     context.fd = HI_MPI_VENC_GetFd(context.venc);
     if (context.fd < 0) {
         Error("hisi_vendor",
@@ -285,6 +286,8 @@ MediaFrame BuildMediaFrame(const VencStreamContext& context,
     frame.codec = context.codec;
     frame.frame_type = frame_type;
     frame.sequence = stream.u32Seq;
+    frame.width = context.size.width;
+    frame.height = context.size.height;
     frame.pts_us = stream.pstPack[0].u64PTS;
     frame.dts_us = frame.pts_us;
     frame.payload = std::move(buffer);
@@ -347,16 +350,14 @@ void VencStreamCapture::Run(MediaPipelineConfig config,
                             std::atomic<bool>& running) {
     VencStreamContext streams[2];
     uint32_t stream_size = 0;
-    if (!InitVencStreamContext(config.venc_channel, StreamId::kMain,
-                               config.main_stream.codec,
+    if (!InitVencStreamContext(config.venc_channel, config.main_stream,
                                streams[stream_size])) {
         return;
     }
     ++stream_size;
 
     if (config.sub_stream.enabled) {
-        if (!InitVencStreamContext(config.sub_venc_channel, StreamId::kSub,
-                                   config.sub_stream.codec,
+        if (!InitVencStreamContext(config.sub_venc_channel, config.sub_stream,
                                    streams[stream_size])) {
             return;
         }
