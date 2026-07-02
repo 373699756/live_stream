@@ -113,7 +113,6 @@ private:
     ConfigScopes config_scopes_;
     mutable std::mutex mutex_;
     std::mutex pipeline_op_mutex_;
-    bool system_initialized_ = false;
 };
 
 bool DeviceImpl::Prepare() {
@@ -175,10 +174,8 @@ bool DeviceImpl::Prepare() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (deinit_ok) {
             phase_ = DevicePhase::kDeinitialized;
-            system_initialized_ = false;
         } else {
             phase_ = DevicePhase::kFailed;
-            system_initialized_ = true;
         }
         return false;
     }
@@ -189,10 +186,8 @@ bool DeviceImpl::Prepare() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (deinit_ok) {
             phase_ = DevicePhase::kDeinitialized;
-            system_initialized_ = false;
         } else {
             phase_ = DevicePhase::kFailed;
-            system_initialized_ = true;
         }
         return false;
     }
@@ -203,10 +198,8 @@ bool DeviceImpl::Prepare() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (deinit_ok) {
             phase_ = DevicePhase::kDeinitialized;
-            system_initialized_ = false;
         } else {
             phase_ = DevicePhase::kFailed;
-            system_initialized_ = true;
         }
         return false;
     }
@@ -215,7 +208,6 @@ bool DeviceImpl::Prepare() {
         std::lock_guard<std::mutex> lock(mutex_);
         active_config_ = start_config;
         active_channels_ = start_channels;
-        system_initialized_ = true;
         if (has_image_config) {
             image_tuner_->SetConfig(next_image_config);
         }
@@ -278,15 +270,8 @@ void DeviceImpl::Release() {
             std::lock_guard<std::mutex> lock(mutex_);
             if (deinit_ok) {
                 phase_ = DevicePhase::kDeinitialized;
-                system_initialized_ = false;
             } else {
                 phase_ = DevicePhase::kFailed;
-                system_initialized_ = true;
-            }
-        } else {
-            std::lock_guard<std::mutex> lock(mutex_);
-            if (phase_ != DevicePhase::kFailed) {
-                system_initialized_ = false;
             }
         }
     }
@@ -413,7 +398,6 @@ ConfigCode DeviceImpl::CheckImageForPipelineLocked(
 bool DeviceImpl::ApplyPipelineConfig(
     const MediaPipelineConfig &config) {
     bool is_started = false;
-    bool system_initialized = false;
     DevicePhase prev_phase = DevicePhase::kCreated;
     MediaPipelineConfig prev_config;
     Json prev_image_config;
@@ -425,7 +409,6 @@ bool DeviceImpl::ApplyPipelineConfig(
         }
         prev_phase = phase_;
         is_started = phase_ == DevicePhase::kStarted;
-        system_initialized = system_initialized_;
         prev_config = active_config_;
         prev_image_config = image_tuner_->GetConfig();
         phase_ = DevicePhase::kStopping;
@@ -446,7 +429,6 @@ bool DeviceImpl::ApplyPipelineConfig(
         plan.prev_config = prev_config;
         plan.prev_image_config = prev_image_config;
         plan.is_started = is_started;
-        plan.system_initialized = system_initialized;
         change_info = pipeline_change_->Apply(plan);
     }
 
@@ -455,7 +437,6 @@ bool DeviceImpl::ApplyPipelineConfig(
             std::lock_guard<std::mutex> guard(mutex_);
             active_config_ = config;
             active_channels_ = BuildChannelsForConfig(active_config_);
-            system_initialized_ = system_initialized;
             phase_ = is_started ? DevicePhase::kStarted
                                 : prev_phase;
             if (is_started) {
@@ -470,21 +451,15 @@ bool DeviceImpl::ApplyPipelineConfig(
         if (change_info.restored) {
             active_config_ = prev_config;
             active_channels_ = BuildChannelsForConfig(active_config_);
-            system_initialized_ = system_initialized;
             phase_ = is_started ? DevicePhase::kStarted
                                 : prev_phase;
             if (is_started) {
                 image_tuner_->Start();
             }
         } else {
-            if (system_initialized) {
-                system_initialized_ = true;
+            if (IsPrepared(prev_phase)) {
                 phase_ = DevicePhase::kFailed;
-            } else if (is_started) {
-                system_initialized_ = false;
-                phase_ = DevicePhase::kStopped;
             } else {
-                system_initialized_ = false;
                 phase_ = prev_phase;
             }
         }
@@ -640,7 +615,7 @@ MediaCapabilities DeviceImpl::GetCapabilities() const {
 
 MediaChannels DeviceImpl::GetChannels() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!system_initialized_ || phase_ != DevicePhase::kStarted) {
+    if (phase_ != DevicePhase::kStarted) {
         return MediaChannels{};
     }
     return active_channels_;

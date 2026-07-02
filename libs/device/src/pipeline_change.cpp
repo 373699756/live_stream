@@ -14,21 +14,22 @@ PipelineChange::PipelineChange(MediaPipeline& pipeline,
 PipelineChangeInfo PipelineChange::Apply(
     const PipelineChangePlan& plan) {
     PipelineChangeInfo result;
+    const bool pipeline_was_initialized = pipeline_.system_initialized();
     if (plan.is_started) {
         pipeline_.Stop();
     }
 
     bool deinit_ok = true;
-    if (plan.system_initialized) {
+    if (pipeline_was_initialized) {
         deinit_ok = pipeline_.DeinitSystem();
     }
     if (deinit_ok) {
-        result.applied = ApplyNextConfig(plan);
+        result.applied = ApplyNextConfig(plan, pipeline_was_initialized);
     }
 
     if (!result.applied && deinit_ok &&
-        (plan.is_started || plan.system_initialized)) {
-        result.restored = RestorePrevConfig(plan);
+        (plan.is_started || pipeline_was_initialized)) {
+        result.restored = RestorePrevConfig(plan, pipeline_was_initialized);
         if (!result.restored) {
             Error("device",
                   "restore media pipeline after config failure failed");
@@ -40,12 +41,14 @@ PipelineChangeInfo PipelineChange::Apply(
     return result;
 }
 
-bool PipelineChange::ApplyNextConfig(const PipelineChangePlan& plan) {
+bool PipelineChange::ApplyNextConfig(
+    const PipelineChangePlan& plan,
+    bool pipeline_was_initialized) {
     pipeline_.SetConfig(plan.next_config);
     const MediaChannels next_channels =
         BuildChannelsForConfig(plan.next_config);
 
-    if (plan.system_initialized && !pipeline_.InitSystem()) {
+    if (pipeline_was_initialized && !pipeline_.InitSystem()) {
         return false;
     }
     if (!features_.Bind(next_channels)) {
@@ -63,10 +66,12 @@ bool PipelineChange::ApplyNextConfig(const PipelineChangePlan& plan) {
     return true;
 }
 
-bool PipelineChange::RestorePrevConfig(const PipelineChangePlan& plan) {
+bool PipelineChange::RestorePrevConfig(
+    const PipelineChangePlan& plan,
+    bool pipeline_was_initialized) {
     features_.Stop();
     pipeline_.Stop();
-    if (plan.system_initialized) {
+    if (pipeline_was_initialized) {
         (void)pipeline_.DeinitSystem();
     }
 
@@ -75,7 +80,7 @@ bool PipelineChange::RestorePrevConfig(const PipelineChangePlan& plan) {
         BuildChannelsForConfig(plan.prev_config);
 
     bool restored = true;
-    if (plan.system_initialized && !pipeline_.InitSystem()) {
+    if (pipeline_was_initialized && !pipeline_.InitSystem()) {
         restored = false;
     }
     if (restored && !features_.Bind(prev_channels)) {
@@ -94,7 +99,7 @@ bool PipelineChange::RestorePrevConfig(const PipelineChangePlan& plan) {
     if (!restored) {
         features_.Stop();
         pipeline_.Stop();
-        if (plan.system_initialized) {
+        if (pipeline_was_initialized) {
             (void)pipeline_.DeinitSystem();
         }
     }

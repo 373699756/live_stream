@@ -14,7 +14,6 @@ struct PipelineChangePlan {
     MediaPipelineConfig prev_config;
     Json prev_image_config;
     bool is_started = false;
-    bool system_initialized = false;
 };
 
 struct PipelineChangeInfo {
@@ -29,8 +28,10 @@ public:
     PipelineChangeInfo Apply(const PipelineChangePlan& plan);
 
 private:
-    bool ApplyNextConfig(const PipelineChangePlan& plan);
-    bool RestorePrevConfig(const PipelineChangePlan& plan);
+    bool ApplyNextConfig(const PipelineChangePlan& plan,
+                         bool pipeline_was_initialized);
+    bool RestorePrevConfig(const PipelineChangePlan& plan,
+                           bool pipeline_was_initialized);
     bool ApplyImageConfig(const Json& image_config);
 
     MediaPipeline& pipeline_;
