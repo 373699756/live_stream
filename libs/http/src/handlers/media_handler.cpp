@@ -57,10 +57,10 @@ private:
         Json root = Json::object();
         Json items = Json::array();
         items.push_back(BuildMediaStreamResponse(StreamId::kMain, config_,
-                                                 device_, media_streams_,
+                                                 media_streams_,
                                                  webrtc_reader_));
         items.push_back(BuildMediaStreamResponse(StreamId::kSub, config_,
-                                                 device_, media_streams_,
+                                                 media_streams_,
                                                  webrtc_reader_));
         root["items"] = items;
         return JsonResponse(200, root);
@@ -107,8 +107,8 @@ private:
                                                request, stream_id));
         }
         return JsonResponse(
-            200, BuildMediaStreamResponse(stream_id, config_, device_,
-                                          media_streams_, webrtc_reader_));
+            200, BuildMediaStreamResponse(stream_id, config_, media_streams_,
+                                          webrtc_reader_));
     }
 
     HttpResponse HandleSessions(const HttpRequest &request) {

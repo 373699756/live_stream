@@ -3,7 +3,6 @@
 #include "http_stream_id_json.h"
 
 #include "config.h"
-#include "device.h"
 #include "json_reader.h"
 #include "media/media_streams.h"
 #include "webrtc.h"
@@ -225,23 +224,6 @@ Json ImageCapabilitiesToJson(const ImageCapabilities &capabilities) {
     return root;
 }
 
-bool IsPreviewProtocolReady(const MediaStreamInfo &stream_info) {
-    return stream_info.hls_ready || stream_info.flv_ready ||
-           stream_info.mjpeg_ready;
-}
-
-void RequestPreviewKeyframe(MediaStreams *media_streams,
-                            StreamId stream_id,
-                            const MediaStreamInfo &stream_info) {
-    if (media_streams == nullptr || !stream_info.running ||
-        !stream_info.preview_codec ||
-        IsPreviewProtocolReady(stream_info)) {
-        return;
-    }
-    (void)media_streams->RequestKeyframe(stream_id,
-                                         KeyframeRequestSource::kRecovery);
-}
-
 bool IsWebrtcReady(IWebrtcReader *webrtc_reader) {
     if (webrtc_reader == nullptr) {
         return false;
@@ -343,7 +325,6 @@ Json BuildMediaCapabilitiesResponse(const MediaCapabilities &capabilities) {
 
 Json BuildMediaStreamResponse(StreamId stream_id,
                               IConfig *config,
-                              DeviceMedia *device,
                               MediaStreams *media_streams,
                               IWebrtcReader *webrtc_reader) {
     MediaStreamInfo stream_info;
@@ -353,23 +334,13 @@ Json BuildMediaStreamResponse(StreamId stream_id,
         stream_info = media_streams->GetStreamInfo(stream_id);
         stats = media_streams->GetStreamStats();
         media_stream_available = media_streams->IsStreamAvailable(stream_id);
-        RequestPreviewKeyframe(media_streams, stream_id, stream_info);
     }
-
-    const bool device_stream_running =
-        device != nullptr && device->IsStreamStarted(stream_id);
-    const bool stream_running = stream_info.running || device_stream_running;
-    const Codec codec =
-        media_streams != nullptr ? stream_info.codec
-                                 : (device != nullptr
-                                        ? device->GetStreamCodec(stream_id)
-                                        : Codec::kH264);
 
     Json root = Json::object();
     root["stream"] = StreamIdToJsonString(stream_id);
-    root["available"] = media_stream_available || device != nullptr;
-    root["running"] = stream_running;
-    root["codec"] = CodecToJsonString(codec);
+    root["available"] = media_stream_available;
+    root["running"] = stream_info.running;
+    root["codec"] = CodecToJsonString(stream_info.codec);
     root["codec_generation"] = stream_info.codec_generation;
     root["track_ready"] = stream_info.track_ready;
     root["hls_supported"] = stream_info.hls_supported;
@@ -378,10 +349,11 @@ Json BuildMediaStreamResponse(StreamId stream_id,
     root["http_flv_ready"] = stream_info.flv_ready;
     root["mjpeg_supported"] = stream_info.mjpeg_supported;
     root["mjpeg_ready"] = stream_info.mjpeg_ready;
-    const bool webrtc_supported = IsWebrtcSupported(codec, webrtc_reader);
+    const bool webrtc_supported =
+        IsWebrtcSupported(stream_info.codec, webrtc_reader);
     root["webrtc_supported"] = webrtc_supported;
     root["webrtc_ready"] =
-        stream_running && stream_info.track_ready && webrtc_supported &&
+        stream_info.running && stream_info.track_ready && webrtc_supported &&
         IsWebrtcReady(webrtc_reader);
     root["active_subscriptions"] = stats.active_subscriptions;
     root["preview_clients"] =
