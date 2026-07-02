@@ -34,6 +34,8 @@ flowchart LR
 - 通过认证服务保护 RTSP 访问。
 - DESCRIBE 只在 `MediaStreamInfo.track_ready=true` 时生成 SDP；stream 不存在返回 404，
   stream 存在但媒体流尚未 ready 返回 455。
+- RTSP/RTP 只支持 H.264/H.265 编码流；MJPEG stream 通过 HTTP multipart JPEG
+  预览，RTSP DESCRIBE/PLAY 对 MJPEG 返回 415，不生成伪 H264/H265 SDP。
 - PLAY 后为 session 创建 `FrameSubscription`，先输出启动 GOP，再拉取 live
   frame 并通过 `rtp::RtpPacketizer` 输出 RTP。
 - SETUP 绑定 TCP interleaved 或 session 私有 UDP RTP/RTCP transport。

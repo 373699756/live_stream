@@ -108,8 +108,19 @@ void RtspRequestHandler::HandleDescribe(
         SendResponse(session.connection_id, 455, request, {}, "");
         return;
     }
+    if (!RtspMuxer::IsCodecSupported(stream_info.codec)) {
+        Warn(kRtspRequestHandlerModule,
+             "RTSP describe unsupported codec uri=%s",
+             request.uri.c_str());
+        SendResponse(session.connection_id, 415, request, {}, "");
+        return;
+    }
     const std::string sdp = RtspMuxer::BuildSdp(delegate_.RtspLocalAddress(),
                                                 stream_id, stream_info);
+    if (sdp.empty()) {
+        SendResponse(session.connection_id, 415, request, {}, "");
+        return;
+    }
     SendResponse(session.connection_id, 200, request,
                  {{"Content-Type", "application/sdp"},
                   {"Content-Base", request.uri}},

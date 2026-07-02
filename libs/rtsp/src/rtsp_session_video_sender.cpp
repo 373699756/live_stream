@@ -3,6 +3,7 @@
 #include "event.h"
 #include "media/media_streams.h"
 #include "rtp.h"
+#include "rtsp_muxer.h"
 #include "socket_io.h"
 
 #include <cstdint>
@@ -62,6 +63,11 @@ int RtspSessionVideoSender::StartMediaStream(RtspSession &session) {
         media_streams_->UnsubscribeFrames(
             subscription_id, SubscriptionClose::kUnsubscribed);
         return 455;
+    }
+    if (!RtspMuxer::IsCodecSupported(start_data.stream_info.codec)) {
+        media_streams_->UnsubscribeFrames(
+            subscription_id, SubscriptionClose::kUnsubscribed);
+        return 415;
     }
     const uint32_t play_rtp_timestamp =
         FirstStartFrameRtpTimestamp(start_data);

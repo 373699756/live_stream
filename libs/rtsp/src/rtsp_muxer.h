@@ -10,6 +10,8 @@ namespace live_stream {
 
 class RtspMuxer {
 public:
+    static bool IsCodecSupported(Codec codec);
+
     static std::string BuildSdp(const RtspListenAddress &address,
                                 StreamId stream_id,
                                 const MediaStreamInfo &stream_info);

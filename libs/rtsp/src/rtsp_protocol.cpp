@@ -20,6 +20,8 @@ std::string RtspStatusText(int status) {
             return "Forbidden";
         case 404:
             return "Not Found";
+        case 415:
+            return "Unsupported Media Type";
         case 454:
             return "Session Not Found";
         case 455:

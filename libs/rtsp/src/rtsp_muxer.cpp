@@ -12,18 +12,36 @@ const char *RtpEncodingName(Codec codec) {
     return codec == Codec::kH265 ? "H265" : "H264";
 }
 
-rtp::Codec RtpCodecFromCodec(Codec codec) {
-    return codec == Codec::kH265 ? rtp::Codec::kH265
-                                 : rtp::Codec::kH264;
+bool RtpCodecFromCodec(Codec codec, rtp::Codec *rtp_codec) {
+    if (rtp_codec == nullptr) {
+        return false;
+    }
+    if (codec == Codec::kH264) {
+        *rtp_codec = rtp::Codec::kH264;
+        return true;
+    }
+    if (codec == Codec::kH265) {
+        *rtp_codec = rtp::Codec::kH265;
+        return true;
+    }
+    return false;
 }
 
 }  // namespace
 
+bool RtspMuxer::IsCodecSupported(Codec codec) {
+    return codec == Codec::kH264 || codec == Codec::kH265;
+}
+
 std::string RtspMuxer::BuildSdp(const RtspListenAddress &address,
                                 StreamId stream_id,
                                 const MediaStreamInfo &stream_info) {
+    rtp::Codec rtp_codec = rtp::Codec::kH264;
+    if (!RtpCodecFromCodec(stream_info.codec, &rtp_codec)) {
+        return std::string();
+    }
     const uint8_t payload_type = rtp::RtpPayloadTypeForCodec(
-        RtpCodecFromCodec(stream_info.codec));
+        rtp_codec);
     std::ostringstream sdp;
     sdp << "v=0\r\n";
     sdp << "o=- 0 0 IN IP4 " << address.ip << "\r\n";
