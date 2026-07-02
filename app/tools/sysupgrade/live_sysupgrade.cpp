@@ -61,7 +61,6 @@ struct SysupgradeOptions {
 std::mutex g_status_mutex;
 UpgradeRuntimeStatus g_status;
 std::atomic<bool> g_reboot_requested(false);
-std::atomic<bool> g_status_server_ready(false);
 
 bool HasPrefix(const std::string& value, const std::string& prefix) {
     return value.compare(0, prefix.size(), prefix) == 0;
@@ -334,7 +333,6 @@ void StatusServerLoop(uint16_t port) {
         listen_fd = -1;
         infra::Time::SleepMillis(kStatusServerRetryMs);
     }
-    g_status_server_ready.store(true);
     AppendUpgradeLogLine("status server listening: port=" + std::to_string(port));
     while (true) {
         const int client_fd = accept(listen_fd, nullptr, nullptr);

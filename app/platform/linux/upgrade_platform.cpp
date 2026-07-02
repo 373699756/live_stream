@@ -124,6 +124,7 @@ void WriteUpgradeInfo(const std::string& state,
     root["current_stage"] = current_stage.empty() ? state : current_stage;
     root["ok"] = ok;
     root["version"] = version;
+    root["target_version"] = version;
     root["error_message"] = error_message;
     static_cast<void>(linux_platform::WriteUpgradeStatusFile(root));
 }

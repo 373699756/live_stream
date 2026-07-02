@@ -92,7 +92,9 @@ UpgradeInfo LoadPersistedUpgradeInfo() {
     info.progress_percent =
         infra::Clamp<uint32_t>(root.value("progress_percent", 0U), 0U, 100U);
     info.current_stage = root.value("current_stage", state);
-    info.target_version = root.value("version", std::string());
+    info.target_version =
+        root.value("target_version",
+                  root.value("version", std::string()));
     info.ok = root.value("ok", true);
     info.error_message = root.value("error_message", std::string());
     if (info.state == UpgradeState::kIdle) {

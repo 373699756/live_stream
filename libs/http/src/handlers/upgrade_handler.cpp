@@ -23,7 +23,7 @@ namespace live_stream {
 namespace {
 
 constexpr const char *kUpgradeUploadDir = "/tmp/live_stream/upgrade/uploads";
-constexpr std::size_t kMaxUpgradeUploadBytes = 16U * 1024U * 1024U;
+constexpr std::size_t kMaxUpgradeUploadBytes = 32U * 1024U * 1024U;
 constexpr const char *kLogModule = "upgrade";
 
 int64_t ElapsedMs(int64_t started_ms) {
