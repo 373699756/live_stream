@@ -37,6 +37,7 @@ export const mockMediaCapabilities: MediaCapabilities = {
             codecs: [
                 { codec: 'h264', profiles: ['baseline', 'main', 'high'] },
                 { codec: 'h265', profiles: ['main'] },
+                { codec: 'mjpeg', profiles: [] },
             ],
             resolutions: [
                 { width: 1920, height: 1080 },
@@ -59,6 +60,7 @@ export const mockMediaCapabilities: MediaCapabilities = {
             codecs: [
                 { codec: 'h264', profiles: ['baseline', 'main', 'high'] },
                 { codec: 'h265', profiles: ['main'] },
+                { codec: 'mjpeg', profiles: [] },
             ],
             resolutions: [
                 { width: 1280, height: 720 },

@@ -74,6 +74,9 @@ HTTP `/api/config/video`、`/api/config/image`、`/api/config/snapshot` 和
 默认图像策略为 `low_noise`，按 IMX290 的低照特性使用较低
 锐度、温和 2D/3D 降噪和 3DNR 上限，避免 ISP 手动锐化放大点状噪声或过度发蜡。
 
+Hi3516DV300 VENC 支持 H.264、H.265、MJPEG 和 JPEG。`video.streams.<main/sub>.codec`
+用于实时主/子码流，暴露 H.264、H.265 和 MJPEG；JPEG 只用于 snapshot 抓图输出。
+
 ROI 编码只改变 VENC 码率/QP 分配，不裁剪画面，也不改变协议输出分辨率。当前配置
 每路最多 8 个区域，坐标使用该码流分辨率下的像素坐标。`absolute_qp=false` 时
 `qp` 是相对 QP，负值提高区域画质；`absolute_qp=true` 时 `qp` 是绝对 QP。ROI 只对

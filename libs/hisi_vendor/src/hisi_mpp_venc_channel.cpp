@@ -185,14 +185,18 @@ bool ApplyVencRoiConfig(int32_t venc_channel,
     if (venc_channel < 0) {
         return false;
     }
+    const bool roi_codec_supported =
+        stream_config.codec == Codec::kH264 ||
+        stream_config.codec == Codec::kH265;
     if (stream_config.roi.regions.size() > kMaxVencRoiRegions) {
         Error("hisi_vendor", "VENC ROI regions exceed limit chn=%d size=%zu",
               venc_channel, stream_config.roi.regions.size());
         return false;
     }
-    if (stream_config.roi.enabled &&
-        stream_config.codec != Codec::kH264 &&
-        stream_config.codec != Codec::kH265) {
+    if (!roi_codec_supported) {
+        if (!stream_config.roi.enabled) {
+            return true;
+        }
         Error("hisi_vendor", "VENC ROI unsupported codec chn=%d codec=%s",
               venc_channel, CodecName(stream_config.codec));
         return false;

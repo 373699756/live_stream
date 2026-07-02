@@ -211,7 +211,7 @@ ConfigCode ValidateVideoStreamConfig(
         return MakeConfigError(JoinField(stream_prefix, "smart_codec"),
                                "unsupported codec", error);
     }
-    if (stream.roi.enabled || !stream.roi.regions.empty()) {
+    if (stream.roi.enabled) {
         if (!stream_capabilities.roi_supported ||
             stream_capabilities.max_roi_regions == 0) {
             return MakeConfigError(JoinField(stream_prefix, "roi"),
@@ -222,10 +222,15 @@ ConfigCode ValidateVideoStreamConfig(
             return MakeConfigError(JoinField(stream_prefix, "roi"),
                                    "unsupported codec", error);
         }
-        const uint32_t max_roi_regions =
-            stream_capabilities.max_roi_regions < kMaxVideoRoiRegions
-                ? stream_capabilities.max_roi_regions
-                : kMaxVideoRoiRegions;
+    }
+    if (!stream.roi.regions.empty()) {
+        uint32_t max_roi_regions = kMaxVideoRoiRegions;
+        if (stream.roi.enabled) {
+            max_roi_regions =
+                stream_capabilities.max_roi_regions < kMaxVideoRoiRegions
+                    ? stream_capabilities.max_roi_regions
+                    : kMaxVideoRoiRegions;
+        }
         if (stream.roi.regions.size() > max_roi_regions) {
             return MakeConfigError(JoinField(stream_prefix, "roi"),
                                    "too many regions", error);

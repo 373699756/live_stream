@@ -58,6 +58,9 @@ export function VideoStreamForm({
                 next.gop_mode = 'normal_p';
             }
         }
+        if (!codecSupportsSmartP(next.codec) && next.roi?.enabled) {
+            next.roi = { ...next.roi, enabled: false };
+        }
         onChange(next);
     };
     const available = capabilities.available !== false;
