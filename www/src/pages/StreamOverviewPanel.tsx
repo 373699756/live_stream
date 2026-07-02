@@ -48,12 +48,14 @@ export function StreamOverviewPanel({
                                 <h3>{streamLabel(stream)}</h3>
                                 <StatusBadge
                                     state={
-                                        streamInfo.running
+                                        streamInfo.running === true
                                             ? 'running'
                                             : 'pending'
                                     }
                                     label={
-                                        streamInfo.running ? '运行中' : '未运行'
+                                        streamInfo.running === true
+                                            ? '运行中'
+                                            : '未运行'
                                     }
                                 />
                             </div>
@@ -96,15 +98,16 @@ export function StreamOverviewPanel({
                                 <div>
                                     <dt>读者/客户端</dt>
                                     <dd>
-                                        {streamInfo.active_subscriptions} /{' '}
-                                        {streamInfo.preview_clients}
+                                        {streamInfo.active_subscriptions ??
+                                            0}{' '}
+                                        / {streamInfo.preview_clients ?? 0}
                                     </dd>
                                 </div>
                                 <div>
                                     <dt>缓存</dt>
                                     <dd>
-                                        {streamInfo.cached_frames} 帧 /{' '}
-                                        {streamInfo.cached_bytes} B
+                                        {streamInfo.cached_frames ?? 0} 帧 /{' '}
+                                        {streamInfo.cached_bytes ?? 0} B
                                     </dd>
                                 </div>
                                 <div>

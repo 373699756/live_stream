@@ -144,8 +144,7 @@ flowchart LR
 `GET /api/media/streams/{stream}`。前端使用：
 
 - `available`
-- `running`
-- `codec`
+- `running` / `codec`
 - `resolution` / `fps` / `bitrateKbps`
 - `hlsSupported` / `hlsReady`
 - `httpFlvSupported` / `httpFlvReady`
@@ -154,6 +153,9 @@ flowchart LR
 - `active_subscriptions` / `preview_clients`
 - `lastDts`
 - `lastResetReason`
+
+当 `available=false` 时，后端不返回协议 ready、client/cache 计数和播放元信息；
+Web 只把这些缺失字段按不可用展示，不反向推导为真实后端状态。
 
 Web 通过 `GET /api/events` 订阅后端 SSE 事件，并在媒体状态变化时立即刷新
 `GET /api/media/streams`；轮询只作为事件流不可用时的兜底。协议自动选择优先使用

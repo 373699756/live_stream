@@ -23,7 +23,7 @@ interface StreamProtocolPanelProps {
     sessions: MediaSessionInfo[];
 }
 
-function readyText(value: boolean) {
+function readyText(value: boolean | undefined) {
     return value ? 'ready' : 'not ready';
 }
 
@@ -53,9 +53,11 @@ function protocolReady(streamInfo: MediaStreamInfo, protocol: string) {
         ].join(' / ');
     }
     if (protocol === 'RTSP') {
-        return streamInfo.track_ready ? 'track ready' : 'track not ready';
+        return streamInfo.track_ready === true
+            ? 'track ready'
+            : 'track not ready';
     }
-    return streamInfo.running ? 'available' : 'not running';
+    return streamInfo.running === true ? 'available' : 'not running';
 }
 
 function protocolActiveSize(

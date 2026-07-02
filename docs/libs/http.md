@@ -87,8 +87,10 @@ HTTP 路由由本模块实现，但业务语义归拥有模块。第二阶段重
 `GET /api/media/streams` 和 `GET /api/media/streams/{stream}` 返回每路码流的
 运行态、协议 ready、subscription/client 和缓存诊断；其中 `resolution`、`fps`、
 `bitrate_kbps` 来自当前 `video.streams.<main/sub>` 配置，用于 Web 运行总览展示，
-不是媒体模块从编码帧反推的隐藏 SDK 状态。码流 `available=false` 时不返回
-`codec`、`codec_generation`、`last_dts` 或 `last_reset_reason` 这类播放元信息。
+不是媒体模块从编码帧反推的隐藏 SDK 状态。码流 `available=false` 时只返回
+`stream`、`available` 和可从配置读取的展示字段；不返回 `running`、协议 ready、
+client/cache 计数、`codec`、`codec_generation`、`last_dts` 或
+`last_reset_reason` 这类媒体源诊断字段。
 
 播放 URL 由 `GET /api/media/streams/{stream}/urls` 返回：
 
