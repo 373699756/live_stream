@@ -349,6 +349,10 @@
     grid-template-columns: minmax(0, 1fr);
 }
 
+.live-page-heading {
+    margin-bottom: 0;
+}
+
 .overlay-grid {
     grid-template-columns: minmax(420px, 1fr) 420px;
 }

@@ -29,6 +29,12 @@ export function LiveViewPage() {
 
     return (
         <div className="page-grid live-grid">
+            <div className="page-heading live-page-heading">
+                <div>
+                    <h2>实时预览</h2>
+                    <p>查看当前码流画面，按浏览器能力切换 WebRTC、HLS、HTTP-FLV 或 MJPEG。</p>
+                </div>
+            </div>
             <VideoPreview
                 stream={stream}
                 statuses={statuses}

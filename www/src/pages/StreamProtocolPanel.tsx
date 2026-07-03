@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type {
     MediaPreviewUrls,
     MediaSessionInfo,
@@ -100,6 +101,8 @@ export function StreamProtocolPanel({
     urlsByStream,
     sessions,
 }: StreamProtocolPanelProps) {
+    const [copiedKey, setCopiedKey] = useState('');
+
     const copyUrl = (url: string) => {
         if (!url || !navigator.clipboard) {
             return;
@@ -163,9 +166,21 @@ export function StreamProtocolPanel({
                                                     ? '复制访问地址'
                                                     : '地址不可用'
                                             }
-                                            onClick={() => copyUrl(row.url)}
+                                            onClick={() => {
+                                                copyUrl(row.url);
+                                                setCopiedKey(
+                                                    `${stream}-${row.label}`,
+                                                );
+                                                window.setTimeout(
+                                                    () => setCopiedKey(''),
+                                                    1200,
+                                                );
+                                            }}
                                         >
-                                            复制
+                                            {copiedKey ===
+                                            `${stream}-${row.label}`
+                                                ? '已复制'
+                                                : '复制'}
                                         </button>
                                     </div>
                                 ))}

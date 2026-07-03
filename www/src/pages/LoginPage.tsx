@@ -43,8 +43,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 <div className="login-heading">
                     <div className="login-brand">IPC</div>
                     <div>
-                        <h1>Live Stream IPC</h1>
-                        <p>设备 Web 管理控制台</p>
+                        <h1>IPC 管理台</h1>
+                        <p>实时预览、配置与运维管理</p>
                     </div>
                 </div>
                 <div className="auth-field-list">
