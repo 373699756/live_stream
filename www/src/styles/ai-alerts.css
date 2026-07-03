@@ -685,24 +685,22 @@
 }
 
 .ai-console-preview .preview-toolbar {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    display: flex;
+    grid-template-columns: none;
 }
 
 .ai-console-preview .preview-toolbar-right {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: end;
+    display: flex;
+    align-items: center;
 }
 
-.ai-console-preview .stream-switcher,
 .ai-console-preview .preview-toolbar-group,
 .ai-console-preview .preview-actions {
-    width: 100%;
+    width: auto;
 }
 
 .ai-console-preview .stream-switcher button {
-    min-width: 0;
+    min-width: 118px;
 }
 
 .ai-status-compact,
