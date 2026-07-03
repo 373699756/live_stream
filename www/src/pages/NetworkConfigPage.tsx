@@ -51,8 +51,8 @@ export function NetworkConfigPage() {
     };
 
     return (
-        <div className="page-grid network-config-grid">
-            <section className="panel">
+        <div className="network-config-layout">
+            <section className="panel settings-column network-settings-panel">
                 <div className="page-heading">
                     <div>
                         <h2>网络设置</h2>
@@ -62,7 +62,7 @@ export function NetworkConfigPage() {
                         </p>
                     </div>
                 </div>
-                <div className="form-grid">
+                <div className="form-grid form-grid-single network-basic-form">
                     <FormField label="主机名">
                         <input
                             value={config.hostname}
@@ -102,19 +102,15 @@ export function NetworkConfigPage() {
                     onSave={() => void save()}
                     saving={saving}
                 />
-            </section>
 
-            <section className="panel">
-                <div className="page-heading">
-                    <div>
-                        <h2>WebRTC 外网直连</h2>
-                        <p>
-                            公网 IP、端口映射或 VPN 场景使用，CGNAT 仍需要 TURN
-                            或中继。
-                        </p>
-                    </div>
+                <div className="network-section-heading">
+                    <h3>WebRTC 外网直连</h3>
+                    <p>
+                        公网 IP、端口映射或 VPN 场景使用，CGNAT 仍需要 TURN
+                        或中继。
+                    </p>
                 </div>
-                <div className="form-grid">
+                <div className="form-grid network-webrtc-form">
                     <FormField label="启用 WebRTC">
                         <input
                             checked={webrtcConfig.enabled}
@@ -191,11 +187,14 @@ export function NetworkConfigPage() {
                         />
                     </FormField>
                 </div>
-                <div className="status-note">
-                    端口映射需要开放 UDP {webrtcConfig.local_port_base}-
-                    {webrtcConfig.local_port_base +
-                        Math.max(webrtcConfig.max_peers - 1, 0)}
-                    ；HTTP/HTTPS 管理口也必须外网可访问。
+                <div className="status-note network-port-note">
+                    <strong>端口映射</strong>
+                    <span>
+                        需要开放 UDP {webrtcConfig.local_port_base}-
+                        {webrtcConfig.local_port_base +
+                            Math.max(webrtcConfig.max_peers - 1, 0)}
+                        ，HTTP/HTTPS 管理口也必须外网可访问。
+                    </span>
                 </div>
                 <ConfigActionBar
                     error={webrtcError}

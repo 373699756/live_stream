@@ -326,6 +326,80 @@
     gap: 16px;
 }
 
+.snapshot-config-layout .settings-column {
+    width: 100%;
+    max-width: 520px;
+}
+
+.network-config-layout {
+    display: grid;
+    grid-template-columns: minmax(380px, 520px);
+    justify-content: start;
+    align-items: start;
+    gap: 16px;
+}
+
+.network-settings-panel {
+    min-width: 0;
+}
+
+.network-basic-form {
+    max-width: 430px;
+}
+
+.network-settings-panel .network-webrtc-form {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 430px;
+    gap: 12px;
+}
+
+.network-basic-form .form-field,
+.network-settings-panel .network-webrtc-form .form-field {
+    grid-template-columns: 96px minmax(0, 1fr);
+}
+
+.network-settings-panel
+    .network-webrtc-form
+    .form-control
+    input:not([type='checkbox']),
+.network-settings-panel .network-webrtc-form .form-control textarea {
+    max-width: 100%;
+}
+
+.network-section-heading {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid #e5eaf1;
+}
+
+.network-section-heading h3 {
+    margin: 0;
+    color: #202b3c;
+    font-size: 16px;
+}
+
+.network-section-heading p {
+    margin: 5px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.network-webrtc-form .form-control textarea {
+    width: 100%;
+    min-height: 112px;
+}
+
+.network-port-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.network-port-note strong {
+    flex: 0 0 auto;
+    color: #243044;
+}
+
 .settings-column {
     display: flex;
     flex-direction: column;
@@ -354,7 +428,8 @@
 }
 
 .live-grid .preview-panel {
-    max-width: min(100%, 1480px);
+    width: 100%;
+    max-width: none;
 }
 
 .live-grid .video-surface {

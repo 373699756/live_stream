@@ -18,7 +18,7 @@ export function SnapshotConfigPage() {
     }
 
     return (
-        <div className="config-preview-layout">
+        <div className="config-preview-layout snapshot-config-layout">
             <section className="panel settings-column">
                 <div className="page-heading">
                     <div>

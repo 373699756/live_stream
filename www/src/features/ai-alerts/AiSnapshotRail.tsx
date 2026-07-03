@@ -1,17 +1,36 @@
 import { aiAlertImageUrl } from '../../api/ai';
-import type { AiAlertRecord, AiCapabilities } from '../../api/types';
+import type {
+    AiAlertRecord,
+    AiCapabilities,
+    AiStats,
+    AlarmInfoResponse,
+} from '../../api/types';
 import { formatTimestamp } from '../../utils/displayText';
+import { latestAlarmTimeText } from './aiAlertFormat';
 import { isAiTaskAvailable, taskLabel } from './aiAlertTasks';
-import { maxConfidence, streamLabel } from './aiConfigDraft';
+import { maxConfidence, numberText, streamLabel } from './aiConfigDraft';
+
+interface EnabledTaskSummary {
+    backendLabel: string;
+    enabledTaskTotal: number;
+}
 
 interface AiSnapshotRailProps {
     alerts: AiAlertRecord[];
+    alarmInfo: AlarmInfoResponse | null;
     capabilities: AiCapabilities | null;
+    lastAlarmEvent: Parameters<typeof latestAlarmTimeText>[1];
+    summary: AiStats;
+    supportedTaskSummary: EnabledTaskSummary;
 }
 
 export function AiSnapshotRail({
     alerts,
+    alarmInfo,
     capabilities,
+    lastAlarmEvent,
+    summary,
+    supportedTaskSummary,
 }: AiSnapshotRailProps) {
     const latestAlerts = alerts
         .filter((alert) => isAiTaskAvailable(alert.task, capabilities))
@@ -29,6 +48,34 @@ export function AiSnapshotRail({
                 <div>
                     <h3>实时抓图</h3>
                     <span>最新 {latestAlerts.length}/10</span>
+                </div>
+                <div className="ai-status-kpis">
+                    <div>
+                        <span>AI 事件</span>
+                        <strong>
+                            {supportedTaskSummary.enabledTaskTotal} 启用
+                        </strong>
+                    </div>
+                    <div>
+                        <span>后端</span>
+                        <strong>{supportedTaskSummary.backendLabel}</strong>
+                    </div>
+                    <div>
+                        <span>有效结果</span>
+                        <strong>{numberText(summary.active_results)}</strong>
+                    </div>
+                    <div>
+                        <span>最近耗时</span>
+                        <strong>
+                            {numberText(summary.last_inference_time_ms)} ms
+                        </strong>
+                    </div>
+                    <div>
+                        <span>最近报警</span>
+                        <strong>
+                            {latestAlarmTimeText(alarmInfo, lastAlarmEvent)}
+                        </strong>
+                    </div>
                 </div>
             </div>
             <div className="ai-snapshot-list">

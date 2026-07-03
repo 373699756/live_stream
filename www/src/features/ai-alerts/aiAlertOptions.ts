@@ -4,9 +4,9 @@ export type SensitivityLevel = 'low' | 'medium' | 'high';
 
 export const kTaskOrder: AiTaskName[] = [
     'object_detection',
-    'perimeter_detection',
     'motion_classification',
     'occlusion_detection',
+    'perimeter_detection',
 ];
 
 export const kSensitivityOptions: Array<{
@@ -25,22 +25,22 @@ export const kStreamOptions: Array<{ label: string; value: StreamName }> = [
 ];
 
 export const kInferenceIntervalOptions = [
-    { label: '高频 250 ms', value: 250 },
-    { label: '标准 500 ms', value: 500 },
-    { label: '低负载 1 s', value: 1000 },
-    { label: '巡检 2 s', value: 2000 },
+    { label: '250 ms', value: 250 },
+    { label: '500 ms', value: 500 },
+    { label: '1 s', value: 1000 },
+    { label: '2 s', value: 2000 },
 ];
 
 export const kMaxResultsOptions = [
-    { label: '少量 8 个', value: 8 },
-    { label: '标准 16 个', value: 16 },
-    { label: '更多 32 个', value: 32 },
+    { label: '8 个', value: 8 },
+    { label: '16 个', value: 16 },
+    { label: '32 个', value: 32 },
 ];
 
 export const kAlarmDurationOptions = [
     { label: '立即触发', value: 0 },
-    { label: '持续 0.5 s', value: 500 },
-    { label: '持续 1 s', value: 1000 },
-    { label: '持续 3 s', value: 3000 },
-    { label: '持续 5 s', value: 5000 },
+    { label: '0.5 s', value: 500 },
+    { label: '1 s', value: 1000 },
+    { label: '3 s', value: 3000 },
+    { label: '5 s', value: 5000 },
 ];

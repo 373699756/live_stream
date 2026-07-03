@@ -10,10 +10,10 @@
 .preview-footer {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    min-height: 46px;
-    padding: 8px 10px;
+    justify-content: flex-start;
+    gap: 8px;
+    min-height: 38px;
+    padding: 5px 8px;
     color: #dce7f7;
     background: #182235;
 }
@@ -22,6 +22,8 @@
     align-items: center;
     flex-wrap: nowrap;
     overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
 }
 
 .preview-footer {
@@ -51,23 +53,17 @@
 
 .protocol-toolbar-group {
     flex: 0 0 auto;
+    margin-left: auto;
 }
 
 .preview-toolbar-right {
-    min-width: 0;
-    display: flex;
-    align-items: end;
-    gap: 10px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-}
-
-.preview-toolbar-label {
     flex: 0 0 auto;
-    color: #7f90aa;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0;
+    min-width: max-content;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
 }
 
 .segmented button,
@@ -91,30 +87,20 @@
 }
 
 .stream-switcher button {
-    min-width: 142px;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-        'label state'
-        'detail detail';
-    align-items: center;
-    gap: 4px 10px;
-    padding: 7px 10px;
-    text-align: left;
-}
-
-.preview-stream-name {
-    grid-area: label;
-    min-width: 0;
-    display: inline-flex;
+    min-width: 76px;
+    height: 28px;
+    min-height: 28px;
+    display: flex;
     align-items: center;
     gap: 6px;
+    padding: 0 9px;
+    text-align: left;
 }
 
 .stream-switcher strong {
     min-width: 0;
     overflow: hidden;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
     line-height: 1.2;
     text-overflow: ellipsis;
@@ -122,34 +108,22 @@
 }
 
 .stream-switcher span {
-    grid-area: state;
-    justify-self: end;
-    min-width: 48px;
-    padding: 2px 6px;
-    color: #9fb0c8;
-    font-size: 11px;
-    line-height: 1.25;
-    text-align: right;
-    border: 1px solid #3a465c;
-    border-radius: 4px;
-    background: #172033;
+    flex: 0 0 auto;
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: #64748b;
 }
 
 .stream-switcher span.running {
-    color: #c9f7df;
-    border-color: #2f8f5c;
-    background: rgba(34, 197, 94, 0.15);
+    background: #22c55e;
 }
 
-.stream-switcher em {
-    grid-area: detail;
-    min-width: 0;
-    color: #b8c6da;
-    font-size: 12px;
-    font-style: normal;
-    line-height: 1.25;
-    overflow: hidden;
-    text-overflow: ellipsis;
+.preview-protocol-label {
+    flex: 0 0 auto;
+    color: #9fb0c8;
+    font-size: 11px;
+    font-weight: 700;
     white-space: nowrap;
 }
 
@@ -162,7 +136,7 @@
 .preview-actions {
     display: flex;
     gap: 6px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     justify-content: flex-end;
 }
 
@@ -173,12 +147,19 @@
 }
 
 .protocol-actions button {
-    min-width: 62px;
-    padding-right: 9px;
-    padding-left: 9px;
+    width: 30px;
+    height: 28px;
+    min-height: 28px;
+    min-width: 30px;
+    padding: 0;
 }
 
 .preview-command-actions button {
+    width: 30px;
+    height: 28px;
+    min-width: 30px;
+    min-height: 28px;
+    padding: 0;
     border-radius: 4px;
 }
 
@@ -209,24 +190,15 @@
 }
 
 .config-preview-layout .stream-switcher button {
-    min-width: 122px;
-}
-
-.config-preview-layout .stream-switcher em {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    min-width: 76px;
 }
 
 .config-preview-layout .protocol-actions {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    display: flex;
 }
 
 .config-preview-layout .protocol-actions button {
-    min-width: 0;
-    padding-right: 8px;
-    padding-left: 8px;
+    min-width: 30px;
 }
 
 .video-surface {

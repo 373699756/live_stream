@@ -44,7 +44,7 @@ export function AiEventOptions({
 }: AiEventOptionsProps) {
     return (
         <div className="ai-event-option-grid">
-            <label>
+            <label className="ai-event-option-stream">
                 <span>检测码流</span>
                 <select
                     disabled={!draft}
@@ -62,7 +62,7 @@ export function AiEventOptions({
                     ))}
                 </select>
             </label>
-            <label>
+            <label className="ai-event-option-sensitivity">
                 <span>灵敏度</span>
                 <select
                     disabled={!draft}
@@ -80,7 +80,7 @@ export function AiEventOptions({
                     ))}
                 </select>
             </label>
-            <label>
+            <label className="ai-event-option-interval">
                 <span>推理频率</span>
                 <select
                     disabled={!draft}
@@ -103,7 +103,7 @@ export function AiEventOptions({
                     ))}
                 </select>
             </label>
-            <label>
+            <label className="ai-event-option-results">
                 <span>结果上限</span>
                 <select
                     disabled={!draft}
@@ -124,7 +124,7 @@ export function AiEventOptions({
                     ))}
                 </select>
             </label>
-            <label>
+            <label className="ai-event-option-duration">
                 <span>报警持续</span>
                 <select
                     disabled={!alarmRule}

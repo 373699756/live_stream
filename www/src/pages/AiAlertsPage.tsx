@@ -233,17 +233,15 @@ export function AiAlertsPage() {
             perimeterRegions[regionIndex]?.name || `region-${regionIndex + 1}`;
         setActiveRegionIndex(regionIndex);
         clearSaveMessage();
-        updatePerimeterRegions((currentRegions) =>
-            replaceRegionAt(
-                currentRegions,
-                regionIndex,
-                regionFromPoints(regionName, point, point),
-            ),
-        );
         return { regionIndex, start: point };
     };
 
     const updateDraw = (drag: VideoRegionDrag, point: VideoRegionPoint) => {
+        const dragWidth = Math.abs(point.x - drag.start.x);
+        const dragHeight = Math.abs(point.y - drag.start.y);
+        if (dragWidth < 0.005 || dragHeight < 0.005) {
+            return;
+        }
         const regionName =
             perimeterRegions[drag.regionIndex]?.name ||
             `region-${drag.regionIndex + 1}`;
@@ -388,28 +386,31 @@ export function AiAlertsPage() {
                         addRegion={addRegion}
                         orderedTaskStatuses={orderedTaskStatuses}
                     />
-
-                    <AiSnapshotRail alerts={alerts} capabilities={aiCapabilities} />
                 </main>
 
                 <aside className="ai-console-preview">
                     <AiPreviewPanel
                         activeResolution={activeStatus?.resolution}
                         aiStatus={aiStatus}
-                        alarmInfo={alarmInfo}
                         error={error}
                         fit={editingPerimeter ? 'contain' : 'cover'}
-                        lastAlarmEvent={lastAlarmEvent}
                         perimeterOverlay={perimeterOverlay}
                         previewStream={previewStream}
                         previewUrls={previewUrls}
                         statuses={statuses}
-                        summary={summary}
-                        supportedTaskSummary={supportedTaskSummary}
                         onSnapshot={captureSnapshot}
                         onStreamChange={handleStreamChange}
                     />
                 </aside>
+
+                <AiSnapshotRail
+                    alerts={alerts}
+                    alarmInfo={alarmInfo}
+                    capabilities={aiCapabilities}
+                    lastAlarmEvent={lastAlarmEvent}
+                    summary={summary}
+                    supportedTaskSummary={supportedTaskSummary}
+                />
             </div>
         </div>
     );
