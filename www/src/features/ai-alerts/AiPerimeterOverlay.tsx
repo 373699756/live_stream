@@ -10,6 +10,7 @@ import { regionToRect } from './aiPerimeterRegions';
 interface AiPerimeterOverlayProps {
     activeRegionIndex: number;
     editing: boolean;
+    fit?: 'contain' | 'cover';
     frame: FrameSize;
     regions: AiPerimeterRegion[];
     onDrawMove: (drag: VideoRegionDrag, point: VideoRegionPoint) => void;
@@ -20,6 +21,7 @@ interface AiPerimeterOverlayProps {
 export function AiPerimeterOverlay({
     activeRegionIndex,
     editing,
+    fit = 'contain',
     frame,
     regions,
     onDrawMove,
@@ -31,6 +33,7 @@ export function AiPerimeterOverlay({
             className="ai-perimeter-draw-layer"
             drawing={editing}
             drawingClassName="editing"
+            fit={fit}
             frame={frame}
             items={regions.map((region, index) => {
                 const regionClassName = [

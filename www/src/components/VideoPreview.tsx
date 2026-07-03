@@ -17,6 +17,7 @@ interface VideoPreviewProps {
     previewUrls: MediaPreviewUrls | null;
     onStreamChange: (stream: StreamName) => void;
     enabled?: boolean;
+    fit?: 'contain' | 'cover';
     onSnapshot?: (stream: StreamName) => void;
     surfaceOverlay?: ReactNode;
     webrtcConfig?: WebrtcConfig | null;
@@ -28,6 +29,7 @@ export function VideoPreview({
     previewUrls,
     onStreamChange,
     enabled = true,
+    fit = 'contain',
     onSnapshot,
     surfaceOverlay,
     webrtcConfig = null,
@@ -90,7 +92,7 @@ export function VideoPreview({
     const subSummary = previewStreamSummary(statuses, 'sub');
 
     return (
-        <section className="preview-panel">
+        <section className={`preview-panel preview-fit-${fit}`}>
             <PreviewToolbar
                 flvPreviewEnabled={flvPreviewEnabled}
                 flvSupported={flvSupported}
@@ -114,6 +116,7 @@ export function VideoPreview({
             <PreviewSurface
                 connected={connected}
                 enabled={enabled}
+                fit={fit}
                 mediaLayers={mediaLayers}
                 onToggleFullscreen={toggleFullscreen}
                 previewDetail={previewDetailText(stream, mode)}

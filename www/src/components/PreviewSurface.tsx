@@ -4,6 +4,7 @@ import type { PreviewMediaLayerRefs } from './previewSurfaceTypes';
 interface PreviewSurfaceProps {
     connected: boolean;
     enabled: boolean;
+    fit?: 'contain' | 'cover';
     mediaLayers: PreviewMediaLayerRefs[];
     onToggleFullscreen: () => void;
     previewDetail: string;
@@ -17,6 +18,7 @@ interface PreviewSurfaceProps {
 export function PreviewSurface({
     connected,
     enabled,
+    fit = 'contain',
     mediaLayers,
     onToggleFullscreen,
     previewDetail,
@@ -33,7 +35,7 @@ export function PreviewSurface({
 
     return (
         <div
-            className="video-surface"
+            className={`video-surface video-fit-${fit}`}
             ref={surfaceRef}
             onDoubleClick={onToggleFullscreen}
         >

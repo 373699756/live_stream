@@ -41,10 +41,12 @@ export function LiveViewPage() {
                 previewUrls={previewUrls}
                 onStreamChange={setStream}
                 onSnapshot={captureSnapshot}
+                fit="cover"
                 webrtcConfig={webrtcConfig}
                 surfaceOverlay={
                     <AiDetectionOverlay
                         frameResolution={activeStatus?.resolution}
+                        fit="cover"
                         status={aiStatus}
                         stream={stream}
                         error={aiError}

@@ -323,6 +323,7 @@ export function AiAlertsPage() {
         <AiPerimeterOverlay
             activeRegionIndex={activeRegionIndex}
             editing={editingPerimeter && perimeterEnabled}
+            fit={editingPerimeter ? 'contain' : 'cover'}
             frame={frame}
             regions={perimeterEnabled ? perimeterRegions : []}
             onDrawStart={beginDraw}
@@ -356,22 +357,6 @@ export function AiAlertsPage() {
 
             <div className="ai-console-layout">
                 <main className="ai-console-main">
-                    <AiPreviewPanel
-                        activeResolution={activeStatus?.resolution}
-                        aiStatus={aiStatus}
-                        alarmInfo={alarmInfo}
-                        error={error}
-                        lastAlarmEvent={lastAlarmEvent}
-                        perimeterOverlay={perimeterOverlay}
-                        previewStream={previewStream}
-                        previewUrls={previewUrls}
-                        statuses={statuses}
-                        summary={summary}
-                        supportedTaskSummary={supportedTaskSummary}
-                        onSnapshot={captureSnapshot}
-                        onStreamChange={handleStreamChange}
-                    />
-
                     <AiEventWorkbench
                         activeRegion={activeRegion}
                         activeRegionIndex={activeRegionIndex}
@@ -403,9 +388,28 @@ export function AiAlertsPage() {
                         addRegion={addRegion}
                         orderedTaskStatuses={orderedTaskStatuses}
                     />
+
+                    <AiSnapshotRail alerts={alerts} capabilities={aiCapabilities} />
                 </main>
 
-                <AiSnapshotRail alerts={alerts} capabilities={aiCapabilities} />
+                <aside className="ai-console-preview">
+                    <AiPreviewPanel
+                        activeResolution={activeStatus?.resolution}
+                        aiStatus={aiStatus}
+                        alarmInfo={alarmInfo}
+                        error={error}
+                        fit={editingPerimeter ? 'contain' : 'cover'}
+                        lastAlarmEvent={lastAlarmEvent}
+                        perimeterOverlay={perimeterOverlay}
+                        previewStream={previewStream}
+                        previewUrls={previewUrls}
+                        statuses={statuses}
+                        summary={summary}
+                        supportedTaskSummary={supportedTaskSummary}
+                        onSnapshot={captureSnapshot}
+                        onStreamChange={handleStreamChange}
+                    />
+                </aside>
             </div>
         </div>
     );

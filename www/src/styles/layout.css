@@ -353,6 +353,16 @@
     margin-bottom: 0;
 }
 
+.live-grid .preview-panel {
+    max-width: min(100%, 1480px);
+}
+
+.live-grid .video-surface {
+    height: auto;
+    min-height: 0;
+    aspect-ratio: 16 / 9;
+}
+
 .overlay-grid {
     grid-template-columns: minmax(420px, 1fr) 420px;
 }

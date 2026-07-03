@@ -10,6 +10,7 @@ import type {
 
 interface AiDetectionOverlayProps {
     frameResolution?: string;
+    fit?: 'contain' | 'cover';
     status: AiStatus | null;
     stream: StreamName;
     error?: string;
@@ -55,12 +56,33 @@ function parseResolution(resolution: string | undefined) {
 function contentAreaStyle(
     frame: { width: number; height: number },
     surface: SurfaceSize,
+    fit: 'contain' | 'cover',
 ) {
     if (surface.width <= 0 || surface.height <= 0) {
         return { left: 0, top: 0, width: '100%', height: '100%' };
     }
     const frameRatio = frame.width / frame.height;
     const surfaceRatio = surface.width / surface.height;
+    if (fit === 'cover') {
+        if (surfaceRatio > frameRatio) {
+            const width = surface.width;
+            const height = width / frameRatio;
+            return {
+                left: 0,
+                top: (surface.height - height) / 2,
+                width,
+                height,
+            };
+        }
+        const height = surface.height;
+        const width = height * frameRatio;
+        return {
+            left: (surface.width - width) / 2,
+            top: 0,
+            width,
+            height,
+        };
+    }
     if (surfaceRatio > frameRatio) {
         const height = surface.height;
         const width = height * frameRatio;
@@ -181,6 +203,7 @@ function resultForStream(
 
 export function AiDetectionOverlay({
     frameResolution,
+    fit = 'contain',
     status,
     stream,
     error = '',
@@ -219,7 +242,7 @@ export function AiDetectionOverlay({
     const freshDetectionTotal =
         aiReady && result?.success ? result.detections.length : 0;
     const frame = parseResolution(frameResolution);
-    const contentStyle = contentAreaStyle(frame, surfaceSize);
+    const contentStyle = contentAreaStyle(frame, surfaceSize, fit);
 
     useEffect(() => {
         if (!aiReady) {

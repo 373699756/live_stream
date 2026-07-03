@@ -18,6 +18,10 @@ export function AiSnapshotRail({
         .slice()
         .sort((left, right) => right.timestamp_ms - left.timestamp_ms)
         .slice(0, 10);
+    const snapshotSlots = Array.from({ length: 10 }, (_, index) => ({
+        alert: latestAlerts[index],
+        index,
+    }));
 
     return (
         <aside className="ai-snapshot-rail" aria-label="AI 实时抓图">
@@ -28,44 +32,55 @@ export function AiSnapshotRail({
                 </div>
             </div>
             <div className="ai-snapshot-list">
-                {latestAlerts.length === 0 ? (
-                    <div className="ai-snapshot-empty">暂无抓图</div>
-                ) : (
-                    latestAlerts.map((alert) => {
-                        const imageUrl = aiAlertImageUrl(
-                            alert.image_url,
-                            alert.timestamp_ms,
-                        );
+                {snapshotSlots.map(({ alert, index }) => {
+                    if (!alert) {
                         return (
-                            <button
-                                type="button"
-                                className="ai-snapshot-card"
-                                key={alert.id}
-                                onClick={() =>
-                                    window.open(
-                                        imageUrl,
-                                        '_blank',
-                                        'noopener,noreferrer',
-                                    )
-                                }
+                            <div
+                                className="ai-snapshot-card ai-snapshot-card-empty"
+                                key={`empty-${index}`}
                             >
-                                <img
-                                    alt={`${taskLabel(alert.task)} ${alert.id}`}
-                                    src={imageUrl}
-                                />
+                                <div className="ai-snapshot-empty-frame" />
                                 <span className="ai-snapshot-card-body">
-                                    <strong>{taskLabel(alert.task)}</strong>
-                                    <em>
-                                        {formatTimestamp(alert.timestamp_ms)}
-                                    </em>
-                                    <span>{streamLabel(alert.stream)}</span>
-                                    <span>{alert.detected_targets} 个目标</span>
-                                    <span>{maxConfidence(alert)}</span>
+                                    <strong>等待抓图</strong>
+                                    <em>Slot {index + 1}</em>
+                                    <span>--</span>
+                                    <span>--</span>
+                                    <span>--</span>
                                 </span>
-                            </button>
+                            </div>
                         );
-                    })
-                )}
+                    }
+                    const imageUrl = aiAlertImageUrl(
+                        alert.image_url,
+                        alert.timestamp_ms,
+                    );
+                    return (
+                        <button
+                            type="button"
+                            className="ai-snapshot-card"
+                            key={alert.id}
+                            onClick={() =>
+                                window.open(
+                                    imageUrl,
+                                    '_blank',
+                                    'noopener,noreferrer',
+                                )
+                            }
+                        >
+                            <img
+                                alt={`${taskLabel(alert.task)} ${alert.id}`}
+                                src={imageUrl}
+                            />
+                            <span className="ai-snapshot-card-body">
+                                <strong>{taskLabel(alert.task)}</strong>
+                                <em>{formatTimestamp(alert.timestamp_ms)}</em>
+                                <span>{streamLabel(alert.stream)}</span>
+                                <span>{alert.detected_targets} 个目标</span>
+                                <span>{maxConfidence(alert)}</span>
+                            </span>
+                        </button>
+                    );
+                })}
             </div>
         </aside>
     );

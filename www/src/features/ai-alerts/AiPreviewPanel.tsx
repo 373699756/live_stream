@@ -21,6 +21,7 @@ interface AiPreviewPanelProps {
     aiStatus: AiStatus | null;
     alarmInfo: AlarmInfoResponse | null;
     error: string;
+    fit?: 'contain' | 'cover';
     lastAlarmEvent: Parameters<typeof latestAlarmTimeText>[1];
     perimeterOverlay: ReactNode;
     previewStream: StreamName;
@@ -37,6 +38,7 @@ export function AiPreviewPanel({
     aiStatus,
     alarmInfo,
     error,
+    fit = 'cover',
     lastAlarmEvent,
     perimeterOverlay,
     previewStream,
@@ -55,10 +57,12 @@ export function AiPreviewPanel({
                 previewUrls={previewUrls}
                 onStreamChange={onStreamChange}
                 onSnapshot={onSnapshot}
+                fit={fit}
                 surfaceOverlay={
                     <>
                         <AiDetectionOverlay
                             frameResolution={activeResolution}
+                            fit={fit}
                             status={aiStatus}
                             stream={previewStream}
                             error={error}
@@ -68,8 +72,8 @@ export function AiPreviewPanel({
                 }
             />
 
-            <section className="ai-aiStatus-compact">
-                <div className="ai-aiStatus-kpis">
+            <section className="ai-status-compact">
+                <div className="ai-status-kpis">
                     <div>
                         <span>事件</span>
                         <strong>

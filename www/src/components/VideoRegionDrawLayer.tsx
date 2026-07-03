@@ -49,6 +49,7 @@ interface VideoRegionDrawLayerProps {
     className: string;
     drawingClassName?: string;
     frame: VideoFrameSize;
+    fit?: 'contain' | 'cover';
     drawing?: boolean;
     disabled?: boolean;
     items: VideoRegionItem[];
@@ -74,6 +75,7 @@ export const clampUnit = (value: number) => {
 function contentAreaForVideoSurface(
     frame: VideoFrameSize,
     surface: { width: number; height: number },
+    fit: 'contain' | 'cover',
 ): VideoSurfaceRect | null {
     if (
         frame.width <= 0 ||
@@ -85,6 +87,16 @@ function contentAreaForVideoSurface(
     }
     const frameRatio = frame.width / frame.height;
     const surfaceRatio = surface.width / surface.height;
+    if (fit === 'cover') {
+        if (surfaceRatio > frameRatio) {
+            const width = surface.width;
+            const height = width / frameRatio;
+            return { left: 0, top: (surface.height - height) / 2, width, height };
+        }
+        const height = surface.height;
+        const width = height * frameRatio;
+        return { left: (surface.width - width) / 2, top: 0, width, height };
+    }
     if (surfaceRatio > frameRatio) {
         const height = surface.height;
         const width = height * frameRatio;
@@ -122,6 +134,7 @@ export function VideoRegionDrawLayer({
     className,
     drawingClassName = 'drawing',
     frame,
+    fit = 'contain',
     drawing = false,
     disabled = false,
     items,
@@ -163,7 +176,7 @@ export function VideoRegionDrawLayer({
 
     const videoArea =
         surfaceSize.width > 0 && surfaceSize.height > 0
-            ? contentAreaForVideoSurface(frame, surfaceSize)
+            ? contentAreaForVideoSurface(frame, surfaceSize, fit)
             : null;
 
     const pointerToRegionPoint = (event: PointerEvent<HTMLDivElement>) => {
@@ -174,7 +187,7 @@ export function VideoRegionDrawLayer({
         const contentArea = contentAreaForVideoSurface(frame, {
             width: surface.width,
             height: surface.height,
-        });
+        }, fit);
         if (!contentArea) {
             return null;
         }
