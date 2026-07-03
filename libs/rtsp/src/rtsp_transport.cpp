@@ -48,4 +48,32 @@ bool RtspTransport::SendRtpPacket(
     return false;
 }
 
+bool RtspTransport::SendRtcpSenderReport(ISocketIo &socket_io,
+                                         const RtspRtpRoute &route,
+                                         const uint8_t *data,
+                                         size_t size) {
+    if (data == nullptr || size == 0 || size > 0xffff) {
+        return false;
+    }
+    if (route.mode == RtspTransportMode::kTcpInterleaved) {
+        uint8_t interleaved_header[4] = {
+            '$',
+            static_cast<uint8_t>(route.interleaved_rtp_channel + 1),
+            0,
+            0};
+        byte_writer::WriteU16(interleaved_header + 2,
+                              static_cast<uint16_t>(size));
+        SocketWriteSlices slices;
+        return slices.Add(interleaved_header, sizeof(interleaved_header)) &&
+               slices.Add(data, size) &&
+               socket_io.SendSlices(route.connection_id, slices);
+    }
+    if (route.mode == RtspTransportMode::kUdp &&
+        route.udp_rtcp_socket_id != 0) {
+        return socket_io.SendTo(route.udp_rtcp_socket_id,
+                                route.udp_rtcp_peer, data, size);
+    }
+    return false;
+}
+
 }  // namespace live_stream

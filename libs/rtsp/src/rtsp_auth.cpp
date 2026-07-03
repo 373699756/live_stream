@@ -40,10 +40,10 @@ bool RtspAuth::Authorize(RtspSession &session, const RtspRequest &request,
         return false;
     }
     const size_t colon = decoded.find(':');
-    if (colon == std::string::npos) {
+    if (colon == std::string::npos || colon == 0) {
         responder_.AddAuthFailure();
-        Error("rtsp", "RTSP auth invalid credential peer=%s",
-              session.peer.ip.c_str());
+        Warn("rtsp", "RTSP auth invalid credential peer=%s",
+             session.peer.ip.c_str());
         SendChallenge(session.connection_id, CSeq(request));
         return false;
     }
@@ -57,8 +57,8 @@ bool RtspAuth::Authorize(RtspSession &session, const RtspRequest &request,
     LoginResult login_result = auth_->Login(login);
     if (login_result.token.empty()) {
         responder_.AddAuthFailure();
-        Error("rtsp", "RTSP auth rejected peer=%s user=%s",
-              session.peer.ip.c_str(), login.user_name.c_str());
+        Warn("rtsp", "RTSP auth rejected peer=%s user=%s",
+             session.peer.ip.c_str(), login.user_name.c_str());
         SendChallenge(session.connection_id, CSeq(request));
         return false;
     }
@@ -69,10 +69,10 @@ bool RtspAuth::Authorize(RtspSession &session, const RtspRequest &request,
     if (login_result.must_change_password) {
         static_cast<void>(auth_->Logout(logout_context));
         responder_.AddAuthFailure();
-        Error("rtsp",
-              "RTSP auth rejected peer=%s user=%s "
-              "reason=must_change_password",
-              session.peer.ip.c_str(), login.user_name.c_str());
+        Warn("rtsp",
+             "RTSP auth rejected peer=%s user=%s "
+             "reason=must_change_password",
+             session.peer.ip.c_str(), login.user_name.c_str());
         responder_.SendAuthResponse(session.connection_id, 403,
                                     CSeq(request), {}, "");
         return false;
@@ -83,9 +83,9 @@ bool RtspAuth::Authorize(RtspSession &session, const RtspRequest &request,
                                 AuthPermission::kPreviewVideo, target)) {
         static_cast<void>(auth_->Logout(logout_context));
         responder_.AddAuthFailure();
-        Error("rtsp", "RTSP auth forbidden peer=%s user=%s target=%s",
-              session.peer.ip.c_str(), login.user_name.c_str(),
-              target.c_str());
+        Warn("rtsp", "RTSP auth forbidden peer=%s user=%s target=%s",
+             session.peer.ip.c_str(), login.user_name.c_str(),
+             target.c_str());
         responder_.SendAuthResponse(session.connection_id, 403,
                                     CSeq(request), {}, "");
         return false;

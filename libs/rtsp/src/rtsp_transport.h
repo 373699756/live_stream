@@ -15,7 +15,9 @@ struct RtspRtpRoute {
     RtspTransportMode mode = RtspTransportMode::kTcpInterleaved;
     ConnectionId connection_id = 0;
     UdpSocketId udp_socket_id = 0;
+    UdpSocketId udp_rtcp_socket_id = 0;
     SocketAddress udp_peer;
+    SocketAddress udp_rtcp_peer;
     uint8_t interleaved_rtp_channel = 0;
 };
 
@@ -25,6 +27,10 @@ public:
                               const RtspRtpRoute &route,
                               const MediaFrame &frame,
                               const rtp::RtpPacketView &packet);
+    static bool SendRtcpSenderReport(ISocketIo &socket_io,
+                                     const RtspRtpRoute &route,
+                                     const uint8_t *data,
+                                     size_t size);
 };
 
 }  // namespace live_stream

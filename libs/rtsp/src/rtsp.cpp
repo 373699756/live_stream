@@ -26,6 +26,9 @@ namespace live_stream {
 namespace {
 
 constexpr const char* kProtocolName = "rtsp";
+constexpr uint32_t kRtspUdpRtpSendBufferBytes = 2 * 1024 * 1024;
+constexpr uint32_t kRtspUdpRtcpSendBufferBytes = 256 * 1024;
+
 enum class RtspPhase {
     kCreated = 0,
     kInitialized,
@@ -596,6 +599,7 @@ private:
                                SocketAddress &server_rtcp) {
         UdpBindOptions udp_config;
         udp_config.address = {options_.listen_ip, 0};
+        udp_config.send_buffer_bytes = kRtspUdpRtpSendBufferBytes;
         UdpCallbacks udp_callbacks;
         udp_callbacks.user = this;
         udp_callbacks.on_read = &RtspImpl::HandleUdpRead;
@@ -604,6 +608,7 @@ private:
         if (rtp_result == 0) {
             return false;
         }
+        udp_config.send_buffer_bytes = kRtspUdpRtcpSendBufferBytes;
         const UdpSocketId rtcp_result = socket_io_->BindUdp(
             net_loop_, udp_config, udp_callbacks);
         if (rtcp_result == 0) {

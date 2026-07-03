@@ -22,10 +22,6 @@ RtspSession::RtspSession(ConnectionId next_connection_id,
     stats.session_id = session_id;
 }
 
-RtspSession::~RtspSession() {
-    ClearStartFrames();
-}
-
 bool RtspSession::AppendBytes(const uint8_t *data, uint32_t size) {
     return splitter_.Append(data, size);
 }
@@ -100,6 +96,7 @@ bool RtspSession::LearnUdpRtcpPeer(SocketAddress next_udp_rtcp_peer) {
 void RtspSession::StartPlaying() {
     state = RtspSessionState::kPlaying;
     keyframe_seen = false;
+    last_rtcp_sender_report_ms = 0;
     stats.stream_id = stream_id;
     stats.transport = transport;
 }
@@ -122,6 +119,7 @@ void RtspSession::ClearSubscription() {
     stream_info = MediaStreamInfo{};
     keyframe_seen = false;
     play_rtp_timestamp = 0;
+    last_rtcp_sender_report_ms = 0;
     ClearStartFrames();
 }
 

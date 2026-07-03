@@ -6,7 +6,6 @@
 #include "rtsp.h"
 #include "rtsp_splitter.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <string>
@@ -29,7 +28,6 @@ class RtspSession {
 public:
     RtspSession(ConnectionId connection_id, SocketAddress peer,
                 uint64_t session_id);
-    ~RtspSession();
 
     bool AppendBytes(const uint8_t *data, uint32_t size);
     RtspSplitterResult SplitRequests(uint32_t max_request_bytes);
@@ -79,6 +77,7 @@ public:
     uint16_t rtp_sequence = 1;
     uint32_t ssrc = 0;
     uint32_t play_rtp_timestamp = 0;
+    int64_t last_rtcp_sender_report_ms = 0;
     MediaStreamInfo stream_info;
     // PLAY 后必须先发送关键帧；未看到关键帧前的非关键帧会在 RtspRtpSender 丢弃。
     bool keyframe_seen = false;
