@@ -50,6 +50,7 @@ export function usePreviewPlayer({
         restartPreview,
         visibleLayer,
     } = usePreviewLiveSession({
+        active,
         enabled,
         mode,
         modeState,

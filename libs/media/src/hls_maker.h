@@ -81,7 +81,9 @@ private:
         HlsSegmentFormat format = HlsSegmentFormat::kTs;
         uint64_t sequence = 0;
         int64_t start_pts_us = 0;
+        int64_t start_dts_us = 0;
         int64_t last_pts_us = 0;
+        int64_t last_dts_us = 0;
         uint64_t base_decode_time_90k = 0;
         MediaBufferBuilder body;
         std::vector<HlsFmp4Sample> samples;
@@ -107,7 +109,7 @@ private:
     bool BuildFinalizedFmp4Segment(const SegmentState &segment,
                                    MediaBufferRef &body) const;
     int64_t CurrentSegmentDurationUs() const;
-    void StartSegment(Codec codec, int64_t pts_us);
+    void StartSegment(Codec codec, int64_t pts_us, int64_t dts_us);
     void RememberSegmentCapacity(const SegmentState &segment);
     void PopOldestSegment();
     bool PushFinalizedSegment();

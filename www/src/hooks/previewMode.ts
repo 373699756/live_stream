@@ -46,6 +46,27 @@ function browserCanPreviewFlvCodec(codec?: string) {
     return codec === 'h264';
 }
 
+function browserCanPreviewWebrtcCodec(codec?: string) {
+    if (codec === 'h264') {
+        return true;
+    }
+    if (codec !== 'h265') {
+        return false;
+    }
+    const receiverCodecs =
+        typeof RTCRtpReceiver === 'undefined'
+            ? []
+            : (RTCRtpReceiver.getCapabilities?.('video')?.codecs ?? []);
+    const senderCodecs =
+        typeof RTCRtpSender === 'undefined'
+            ? []
+            : (RTCRtpSender.getCapabilities?.('video')?.codecs ?? []);
+    return [...receiverCodecs, ...senderCodecs].some((candidate) => {
+        const mimeType = candidate.mimeType.toLowerCase();
+        return mimeType === 'video/h265' || mimeType === 'video/hevc';
+    });
+}
+
 export interface PreviewReadiness {
     flvModeEnabled: boolean;
     flvPreviewReady: boolean;
@@ -92,7 +113,10 @@ export function buildPreviewReadiness(
     const mjpegSupported = Boolean(
         active?.mjpeg_supported && previewUrls?.mjpeg,
     );
-    const webrtcSupported = Boolean(active?.webrtc_supported);
+    const webrtcSupported = Boolean(
+        active?.webrtc_supported &&
+            browserCanPreviewWebrtcCodec(active?.codec),
+    );
     const webrtcEnabled = webrtcSupported;
     const streamRunning = active?.running ?? false;
     const webrtcModeEnabled = webrtcEnabled && streamRunning;

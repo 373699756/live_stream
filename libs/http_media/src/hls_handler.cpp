@@ -17,6 +17,8 @@
 namespace live_stream {
 namespace {
 
+constexpr uint32_t kDefaultHlsBandwidthBps = 8000000;
+
 const char *CodecName(Codec codec) {
     switch (codec) {
         case Codec::kH264:
@@ -42,6 +44,29 @@ std::string SegmentQuerySuffix(const HttpRequest &request) {
         return std::string();
     }
     return "?" + request.query_string;
+}
+
+HttpResponse BuildMasterPlaylistResponse(const MediaHlsPlaylist &playlist,
+                                         const HttpRequest &request) {
+    std::string body;
+    body += "#EXTM3U\n";
+    body += "#EXT-X-VERSION:7\n";
+    body += "#EXT-X-STREAM-INF:BANDWIDTH=" +
+            std::to_string(kDefaultHlsBandwidthBps);
+    if (!playlist.codec_string.empty()) {
+        body += ",CODECS=\"" + playlist.codec_string + "\"";
+    }
+    body += "\n";
+    body += "media.m3u8" + SegmentQuerySuffix(request) + "\n";
+
+    HttpResponse response;
+    response.status_code = 200;
+    response.headers["Content-Type"] = "application/vnd.apple.mpegurl";
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
+    response.headers["Pragma"] = "no-cache";
+    response.headers["Expires"] = "0";
+    response.body = body;
+    return response;
 }
 
 HttpResponse BuildPlaylistResponse(const MediaHlsPlaylist &playlist,
@@ -152,16 +177,17 @@ HttpResponse HandleInitSegment(MediaStreams &media_streams,
     HttpResponse response;
     response.status_code = 200;
     response.headers["Content-Type"] = "video/mp4";
-    response.body_slices.emplace_back(playlist.init_segment.Data(),
-                                      playlist.init_segment.Size(),
-                                      playlist.init_segment);
+    response.body.assign(
+        reinterpret_cast<const char *>(playlist.init_segment.Data()),
+        playlist.init_segment.Size());
     return response;
 }
 
 HttpResponse HandlePlaylist(MediaStreams &media_streams,
                             const HttpRequest &request,
                             StreamId stream_id, const std::string &object_name,
-                            const MediaStreamInfo &stream_info) {
+                            const MediaStreamInfo &stream_info,
+                            bool master_playlist) {
     // playlist 请求是浏览器开始预览的信号，顺手请求关键帧可以缩短首个完整
     // HLS segment 生成时间；真正的 segment 数据仍由 MediaStreams 缓存提供。
     bool keyframe_requested = RequestPreviewKeyframe(media_streams, stream_id);
@@ -185,6 +211,9 @@ HttpResponse HandlePlaylist(MediaStreams &media_streams,
                   stream_info.hls_evicted_segments),
               stream_info.hls_current_segment_size);
         return BuildPlaylistResponse(playlist, request);
+    }
+    if (master_playlist && playlist.format == HlsSegmentFormat::kFmp4) {
+        return BuildMasterPlaylistResponse(playlist, request);
     }
     return BuildPlaylistResponse(playlist, request);
 }
@@ -317,7 +346,11 @@ private:
 
         if (object_name == "index.m3u8") {
             return HandlePlaylist(*media_streams_, request, stream_id,
-                                  object_name, stream_info);
+                                  object_name, stream_info, true);
+        }
+        if (object_name == "media.m3u8") {
+            return HandlePlaylist(*media_streams_, request, stream_id,
+                                  object_name, stream_info, false);
         }
         if (object_name == "init.mp4") {
             return HandleInitSegment(*media_streams_, request, stream_id,

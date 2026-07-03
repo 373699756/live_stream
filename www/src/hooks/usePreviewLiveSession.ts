@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { MediaPreviewUrls, StreamName, WebrtcConfig } from '../api/types';
+import type {
+    MediaPreviewUrls,
+    MediaStreamInfo,
+    StreamName,
+    WebrtcConfig,
+} from '../api/types';
 import type {
     PreviewLayerMediaKind,
     PreviewMediaLayerRefs,
@@ -27,6 +32,7 @@ import { startWebrtcPreview } from './webrtcPreviewSession';
 
 interface UsePreviewLiveSessionOptions {
     autoModeSelected: boolean;
+    active?: MediaStreamInfo;
     enabled: boolean;
     mode: PreviewMode;
     modeState: PreviewReadiness;
@@ -39,6 +45,7 @@ interface UsePreviewLiveSessionOptions {
 
 export function usePreviewLiveSession({
     autoModeSelected,
+    active,
     enabled,
     mode,
     modeState,
@@ -93,7 +100,6 @@ export function usePreviewLiveSession({
         flvPreviewReady,
         flvReady,
         hlsModeEnabled,
-        hlsReady,
         mjpegPreviewReady,
         mjpegModeEnabled,
         mjpegReady,
@@ -101,6 +107,7 @@ export function usePreviewLiveSession({
         webrtcEnabled,
         webrtcReady,
     } = modeState;
+    const activeCodec = active?.codec;
 
     const releaseSession = useCallback(
         (session: PreviewLayerSession | null) => {
@@ -445,9 +452,9 @@ export function usePreviewLiveSession({
                     flvPreviewReady,
                     mjpegPreviewReady,
                 },
-                hlsReady,
                 hlsRef,
                 hlsUrl: previewUrls?.hls || '',
+                codec: activeCodec,
                 sessionId,
                 setHlsPlayer: (player) => {
                     session.hls = player;
@@ -473,12 +480,12 @@ export function usePreviewLiveSession({
         });
     }, [
         autoModeSelected,
+        activeCodec,
         enabled,
         flvModeEnabled,
         flvPreviewReady,
         flvReady,
         hlsModeEnabled,
-        hlsReady,
         mjpegPreviewReady,
         mjpegModeEnabled,
         mjpegReady,

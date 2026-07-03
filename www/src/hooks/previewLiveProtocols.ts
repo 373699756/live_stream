@@ -70,6 +70,21 @@ function hlsPlaylistHasSegment(playlist: string): boolean {
     });
 }
 
+function hlsMediaPlaylistUrl(masterUrl: string, playlist: string): string {
+    const absoluteMasterUrl = new URL(masterUrl, window.location.href);
+    const lines = playlist.split('\n');
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) {
+            continue;
+        }
+        if (trimmed.includes('.m3u8')) {
+            return new URL(trimmed, absoluteMasterUrl).toString();
+        }
+    }
+    return '';
+}
+
 function hlsErrorIsFatal(args: unknown[]): boolean {
     return args.some(
         (item) =>
@@ -145,9 +160,9 @@ export function startHlsPreview({
     autoFallback,
     controls,
     fallbackReady,
-    hlsReady,
     hlsRef,
     hlsUrl,
+    codec,
     sessionId,
     setHlsPlayer,
     video,
@@ -165,14 +180,13 @@ export function startHlsPreview({
         flvPreviewReady: boolean;
         mjpegPreviewReady: boolean;
     };
-    hlsReady: boolean;
     hlsRef: CurrentRef<HlsPlayer | null>;
     hlsUrl: string;
+    codec?: string;
     sessionId: number;
     setHlsPlayer: (player: HlsPlayer) => void;
     video: HTMLVideoElement;
 }): number {
-    void hlsReady;
     if (!hlsUrl) {
         controls.setPreviewState('HLS 地址不可用');
         return 0;
@@ -204,13 +218,17 @@ export function startHlsPreview({
     };
     let hlsPlayerLaunched = false;
     let hlsFatalErrors = 0;
+    let hlsNonFatalErrors = 0;
     const launchHlsPlayer = () => {
         if (hlsPlayerLaunched || !controls.isCurrentSession()) {
             return;
         }
         hlsPlayerLaunched = true;
         controls.setPreviewState('等待 HLS 视频流');
-        if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        const useNativeHls =
+            codec !== 'h265' &&
+            video.canPlayType('application/vnd.apple.mpegurl');
+        if (useNativeHls) {
             video.src = hlsSessionUrl;
             void video.play().catch(() => {});
             controls.setPreviewState('正在拉取 HLS 码流');
@@ -243,10 +261,22 @@ export function startHlsPreview({
                             controls.isCurrentSession() &&
                             hlsRef.current === player
                         ) {
-                            if (!hlsErrorIsFatal(args)) {
+                            const fatal = hlsErrorIsFatal(args);
+                            const detail = hlsErrorDetails(args);
+                            if (!fatal) {
+                                ++hlsNonFatalErrors;
+                                if (
+                                    hlsNonFatalErrors >= 3 &&
+                                    !autoFallback.isSessionConnected()
+                                ) {
+                                    controls.setPreviewState(
+                                        detail
+                                            ? `HLS 播放异常：${detail}`
+                                            : 'HLS 播放异常',
+                                    );
+                                }
                                 return;
                             }
-                            const detail = hlsErrorDetails(args);
                             ++hlsFatalErrors;
                             if (hlsFatalErrors >= hlsFatalErrorLimit) {
                                 fallbackFromHlsFailure(
@@ -301,10 +331,25 @@ export function startHlsPreview({
                 ) {
                     return;
                 }
-                if (
-                    response.ok &&
-                    hlsPlaylistHasSegment(await response.text())
-                ) {
+                const body = await response.text();
+                let hasSegment = hlsPlaylistHasSegment(body);
+                if (!hasSegment && body.includes('#EXT-X-STREAM-INF')) {
+                    const mediaPlaylistUrl = hlsMediaPlaylistUrl(
+                        hlsSessionUrl,
+                        body,
+                    );
+                    if (mediaPlaylistUrl) {
+                        const mediaResponse = await fetch(mediaPlaylistUrl, {
+                            cache: 'no-store',
+                            signal: controls.sessionSignal,
+                        });
+                        const mediaPlaylistBody = await mediaResponse.text();
+                        hasSegment =
+                            mediaResponse.ok &&
+                            hlsPlaylistHasSegment(mediaPlaylistBody);
+                    }
+                }
+                if (response.ok && hasSegment) {
                     launchHlsPlayer();
                     return;
                 }

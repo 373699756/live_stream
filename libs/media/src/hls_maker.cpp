@@ -296,6 +296,7 @@ std::string BuildFtypBox() {
     AppendU32(&body, 1);
     body.append("iso6", 4);
     body.append("mp41", 4);
+    body.append("hvc1", 4);
     body.append("hlsf", 4);
     return Mp4Box("ftyp", body);
 }
@@ -459,20 +460,9 @@ std::string BuildInitSegment(const std::string &hvcc_record,
 
     std::string moov;
     moov.append(BuildMvhdBox());
-    moov.append(trak);
+    moov.append(Mp4Box("trak", trak));
     moov.append(mvex);
     return BuildFtypBox() + Mp4Box("moov", moov);
-}
-
-std::string BuildStypBox() {
-    std::string body;
-    body.append("msdh", 4);
-    AppendU32(&body, 0);
-    body.append("msdh", 4);
-    body.append("msix", 4);
-    body.append("cmfc", 4);
-    body.append("iso6", 4);
-    return Mp4Box("styp", body);
 }
 
 std::string BuildFmp4Moof(uint64_t sequence,
@@ -856,7 +846,7 @@ bool HlsMaker::AppendFrame(const MediaFrame &frame,
     ObserveFrameTiming(frame);
 
     const int64_t frame_elapsed_us =
-        frame.pts_us - current_segment_.start_pts_us;
+        frame.dts_us - current_segment_.start_dts_us;
     const int64_t segment_duration_us =
         static_cast<int64_t>(hls_segment_duration_ms) * 1000;
     const int64_t force_finalize_us =
@@ -875,12 +865,12 @@ bool HlsMaker::AppendFrame(const MediaFrame &frame,
         const bool finalized = FinalizeCurrentSegment();
         segment_created = finalized;
         if (finalized && keyframe) {
-            StartSegment(frame.codec, frame.pts_us);
+            StartSegment(frame.codec, frame.pts_us, frame.dts_us);
         }
     }
     if (keyframe && !current_segment_.started) {
         // HLS 首个 segment 必须从关键帧开始；关键帧前的 P/B 帧直接忽略。
-        StartSegment(frame.codec, frame.pts_us);
+        StartSegment(frame.codec, frame.pts_us, frame.dts_us);
     }
     if (!current_segment_.started) {
         return true;
@@ -891,6 +881,7 @@ bool HlsMaker::AppendFrame(const MediaFrame &frame,
         return false;
     }
     current_segment_.last_pts_us = frame.pts_us;
+    current_segment_.last_dts_us = frame.dts_us;
     return true;
 }
 
@@ -1113,27 +1104,27 @@ bool HlsMaker::BuildFinalizedFmp4Segment(const SegmentState &segment,
         reinterpret_cast<const char *>(segment.body.Data()),
         segment.body.Size());
     const std::string mdat = Mp4Box("mdat", mdat_payload);
-    const std::string styp = BuildStypBox();
     std::string moof = BuildFmp4Moof(segment.sequence,
                                      segment.base_decode_time_90k,
                                      segment.samples, 0);
     // tfhd uses default-base-is-moof, so trun.data_offset is relative to the
-    // moof box. A preceding styp box must not be included here.
+    // moof box. Keep media segments as moof+mdat so browser demuxers cannot
+    // disagree about whether a leading styp participates in the base offset.
     const uint32_t data_offset = static_cast<uint32_t>(moof.size() + 8U);
     moof = BuildFmp4Moof(segment.sequence, segment.base_decode_time_90k,
                          segment.samples, data_offset);
-    body = MediaBufferFromString(styp + moof + mdat);
+    body = MediaBufferFromString(moof + mdat);
     return body.Valid();
 }
 
 int64_t HlsMaker::CurrentSegmentDurationUs() const {
     return std::max<int64_t>(last_frame_duration_us_,
-                             current_segment_.last_pts_us -
-                                 current_segment_.start_pts_us +
+                             current_segment_.last_dts_us -
+                                 current_segment_.start_dts_us +
                                  last_frame_duration_us_);
 }
 
-void HlsMaker::StartSegment(Codec codec, int64_t pts_us) {
+void HlsMaker::StartSegment(Codec codec, int64_t pts_us, int64_t dts_us) {
     ResetSegmentState(current_segment_);
     current_segment_ = SegmentState{};
     current_segment_.started = true;
@@ -1142,8 +1133,10 @@ void HlsMaker::StartSegment(Codec codec, int64_t pts_us) {
                               : HlsSegmentFormat::kTs;
     current_segment_.sequence = next_segment_sequence_++;
     current_segment_.start_pts_us = pts_us;
+    current_segment_.start_dts_us = dts_us;
     current_segment_.last_pts_us = pts_us;
-    current_segment_.base_decode_time_90k = TimestampUsTo90k(pts_us);
+    current_segment_.last_dts_us = dts_us;
+    current_segment_.base_decode_time_90k = TimestampUsTo90k(dts_us);
     const uint32_t segment_capacity =
         ClampSegmentCapacity(next_segment_capacity_);
     // segment body 是 HLS 自己的 MediaBuffer，生命周期随 playlist retain 管理；
