@@ -43,6 +43,19 @@ export function PreviewToolbar({
     webrtcPreviewEnabled,
     webrtcSupported,
 }: PreviewToolbarProps) {
+    const protocolDisabledText = (
+        supported: boolean,
+        ready: boolean,
+        unsupportedText: string,
+    ) => {
+        if (!supported) {
+            return unsupportedText;
+        }
+        if (!ready) {
+            return '码流或协议尚未就绪';
+        }
+        return undefined;
+    };
     const renderStreamButton = (
         name: StreamName,
         summary: PreviewStreamSummary,
@@ -62,77 +75,98 @@ export function PreviewToolbar({
 
     return (
         <div className="preview-toolbar">
-            <div className="stream-switcher">
-                {renderStreamButton('main', mainSummary)}
-                {renderStreamButton('sub', subSummary)}
+            <div className="preview-toolbar-group stream-toolbar-group">
+                <span className="preview-toolbar-label">码流</span>
+                <div className="stream-switcher">
+                    {renderStreamButton('main', mainSummary)}
+                    {renderStreamButton('sub', subSummary)}
+                </div>
             </div>
-            <div className="preview-actions">
-                <button
-                    type="button"
-                    className={mode === 'webrtc' ? 'active' : ''}
-                    disabled={
-                        !webrtcEnabled ||
-                        !webrtcSupported ||
-                        !webrtcPreviewEnabled
-                    }
-                    title={
-                        !webrtcSupported
-                            ? '当前编码不支持 WebRTC 预览'
-                            : undefined
-                    }
-                    onClick={() => onModeChange('webrtc')}
-                >
-                    {previewModeLabels.webrtc}
-                </button>
-                <button
-                    type="button"
-                    className={mode === 'hls' ? 'active' : ''}
-                    disabled={!hlsSupported || !hlsModeEnabled}
-                    title={
-                        !hlsSupported ? '当前编码不支持 HLS 预览' : undefined
-                    }
-                    onClick={() => onModeChange('hls')}
-                >
-                    {previewModeLabels.hls}
-                </button>
-                <button
-                    type="button"
-                    className={mode === 'flv' ? 'active' : ''}
-                    disabled={!flvSupported || !flvPreviewEnabled}
-                    title={
-                        !flvSupported
-                            ? '当前编码不支持 HTTP-FLV 预览'
-                            : undefined
-                    }
-                    onClick={() => onModeChange('flv')}
-                >
-                    {previewModeLabels.flv}
-                </button>
-                <button
-                    type="button"
-                    className={mode === 'mjpeg' ? 'active' : ''}
-                    disabled={!mjpegSupported || !mjpegPreviewEnabled}
-                    title={
-                        !mjpegSupported
-                            ? '当前编码不支持 MJPEG 预览'
-                            : undefined
-                    }
-                    onClick={() => onModeChange('mjpeg')}
-                >
-                    {previewModeLabels.mjpeg}
-                </button>
-                {onSnapshot && (
+            <div className="preview-toolbar-right">
+                <div className="preview-toolbar-group">
+                    <span className="preview-toolbar-label">协议</span>
+                    <div className="preview-actions protocol-actions">
+                        <button
+                            type="button"
+                            className={mode === 'webrtc' ? 'active' : ''}
+                            disabled={
+                                !webrtcEnabled ||
+                                !webrtcSupported ||
+                                !webrtcPreviewEnabled
+                            }
+                            title={protocolDisabledText(
+                                webrtcSupported,
+                                webrtcPreviewEnabled,
+                                '当前编码或浏览器不支持 WebRTC 预览',
+                            )}
+                            onClick={() => onModeChange('webrtc')}
+                        >
+                            {previewModeLabels.webrtc}
+                        </button>
+                        <button
+                            type="button"
+                            className={mode === 'hls' ? 'active' : ''}
+                            disabled={!hlsSupported || !hlsModeEnabled}
+                            title={protocolDisabledText(
+                                hlsSupported,
+                                hlsModeEnabled,
+                                '当前编码或浏览器不支持 HLS 预览',
+                            )}
+                            onClick={() => onModeChange('hls')}
+                        >
+                            {previewModeLabels.hls}
+                        </button>
+                        <button
+                            type="button"
+                            className={mode === 'flv' ? 'active' : ''}
+                            disabled={!flvSupported || !flvPreviewEnabled}
+                            title={protocolDisabledText(
+                                flvSupported,
+                                flvPreviewEnabled,
+                                '当前编码不支持 HTTP-FLV 预览',
+                            )}
+                            onClick={() => onModeChange('flv')}
+                        >
+                            {previewModeLabels.flv}
+                        </button>
+                        <button
+                            type="button"
+                            className={mode === 'mjpeg' ? 'active' : ''}
+                            disabled={!mjpegSupported || !mjpegPreviewEnabled}
+                            title={protocolDisabledText(
+                                mjpegSupported,
+                                mjpegPreviewEnabled,
+                                '当前编码不支持 MJPEG 预览',
+                            )}
+                            onClick={() => onModeChange('mjpeg')}
+                        >
+                            {previewModeLabels.mjpeg}
+                        </button>
+                    </div>
+                </div>
+                <div className="preview-actions preview-command-actions">
+                    {onSnapshot && (
+                        <button
+                            type="button"
+                            disabled={!streamRunning}
+                            title={
+                                streamRunning
+                                    ? '打开当前码流抓图'
+                                    : '码流未运行，无法抓图'
+                            }
+                            onClick={() => onSnapshot(stream)}
+                        >
+                            抓图
+                        </button>
+                    )}
                     <button
                         type="button"
-                        disabled={!streamRunning}
-                        onClick={() => onSnapshot(stream)}
+                        title="进入或退出全屏预览"
+                        onClick={onToggleFullscreen}
                     >
-                        抓图
+                        全屏
                     </button>
-                )}
-                <button type="button" onClick={onToggleFullscreen}>
-                    全屏
-                </button>
+                </div>
             </div>
         </div>
     );

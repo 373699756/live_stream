@@ -34,6 +34,8 @@ const resultClasses: Record<OperationResult, string> = {
     Rejected: 'rejected',
 };
 
+const pageSize = 20;
+
 function actionText(action: OperationAction) {
     return actionLabels[action];
 }
@@ -65,17 +67,41 @@ function operationMeta(record: OperationRecord) {
 
 export function LogsPage() {
     const [records, setRecords] = useState<OperationRecord[]>([]);
+    const [actionFilter, setActionFilter] = useState<'all' | OperationAction>(
+        'all',
+    );
+    const [resultFilter, setResultFilter] = useState<'all' | OperationResult>(
+        'all',
+    );
+    const [page, setPage] = useState(0);
     const sortedRecords = useMemo(
-        () =>
-            [...records].sort(
+        () => {
+            const filteredRecords = records.filter((record) => {
+                const actionMatched =
+                    actionFilter === 'all' || record.action === actionFilter;
+                const resultMatched =
+                    resultFilter === 'all' || record.result === resultFilter;
+                return actionMatched && resultMatched;
+            });
+            return filteredRecords.sort(
                 (left, right) => right.timestamp_ms - left.timestamp_ms,
-            ),
-        [records],
+            );
+        },
+        [actionFilter, records, resultFilter],
+    );
+    const totalPages = Math.max(1, Math.ceil(sortedRecords.length / pageSize));
+    const safePage = Math.min(page, totalPages - 1);
+    const visibleRecords = sortedRecords.slice(
+        safePage * pageSize,
+        safePage * pageSize + pageSize,
     );
 
     useEffect(() => {
         void getOperations().then((body) => setRecords(body.items));
     }, []);
+    useEffect(() => {
+        setPage(0);
+    }, [actionFilter, resultFilter]);
 
     return (
         <section className="panel">
@@ -84,11 +110,54 @@ export function LogsPage() {
                     <h2>日志信息</h2>
                     <p>查看和导出用户操作审计记录。</p>
                 </div>
-            </div>
-            <div className="log-actions">
                 <a className="button-like" href={operationsExportUrl()}>
                     导出操作审计
                 </a>
+            </div>
+            <div className="filter-toolbar">
+                <label>
+                    <span>操作类型</span>
+                    <select
+                        value={actionFilter}
+                        onChange={(event) =>
+                            setActionFilter(
+                                event.target.value as
+                                    | 'all'
+                                    | OperationAction,
+                            )
+                        }
+                    >
+                        <option value="all">全部</option>
+                        {Object.entries(actionLabels).map(([value, label]) => (
+                            <option key={value} value={value}>
+                                {label}
+                            </option>
+                        ))}
+                    </select>
+                </label>
+                <label>
+                    <span>操作结果</span>
+                    <select
+                        value={resultFilter}
+                        onChange={(event) =>
+                            setResultFilter(
+                                event.target.value as
+                                    | 'all'
+                                    | OperationResult,
+                            )
+                        }
+                    >
+                        <option value="all">全部</option>
+                        {Object.entries(resultLabels).map(([value, label]) => (
+                            <option key={value} value={value}>
+                                {label}
+                            </option>
+                        ))}
+                    </select>
+                </label>
+                <strong>
+                    {sortedRecords.length} / {records.length} 条
+                </strong>
             </div>
             <div className="log-table">
                 <div className="log-row log-header">
@@ -96,7 +165,7 @@ export function LogsPage() {
                     <strong>操作内容</strong>
                     <em>操作状态</em>
                 </div>
-                {sortedRecords.map((record) => (
+                {visibleRecords.map((record) => (
                     <div
                         className="log-row"
                         key={
@@ -123,13 +192,36 @@ export function LogsPage() {
                         </em>
                     </div>
                 ))}
-                {sortedRecords.length === 0 && (
+                {visibleRecords.length === 0 && (
                     <div className="log-row log-empty">
                         <span>-</span>
                         <strong>暂无审计记录</strong>
                         <em>-</em>
                     </div>
                 )}
+            </div>
+            <div className="table-pagination">
+                <button
+                    type="button"
+                    disabled={safePage <= 0}
+                    onClick={() => setPage((current) => Math.max(0, current - 1))}
+                >
+                    上一页
+                </button>
+                <span>
+                    第 {safePage + 1} / {totalPages} 页
+                </span>
+                <button
+                    type="button"
+                    disabled={safePage >= totalPages - 1}
+                    onClick={() =>
+                        setPage((current) =>
+                            Math.min(totalPages - 1, current + 1),
+                        )
+                    }
+                >
+                    下一页
+                </button>
             </div>
         </section>
     );

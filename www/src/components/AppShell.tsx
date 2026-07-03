@@ -17,23 +17,29 @@ export function AppShell({
     userName,
     children,
 }: AppShellProps) {
+    const activeItem = navItems.find((item) => item.id === activePage);
+
     return (
         <div className="app-shell">
             <header className="topbar">
                 <div className="brand-block">
                     <div className="brand-mark">IPC</div>
                     <div>
-                        <div className="brand-title">Live Stream IPC</div>
+                        <div className="brand-title">IPC 管理台</div>
                         <div className="brand-subtitle">
-                            Web Management Console
+                            {activeItem
+                                ? `${activeItem.group} / ${activeItem.label}`
+                                : '设备管理'}
                         </div>
                     </div>
                 </div>
                 <div className="topbar-status">
-                    <span className="status-dot online" />
-                    设备在线
+                    <span className="device-pill online">
+                        <span className="status-dot online" />
+                        设备在线
+                    </span>
                     <span className="divider" />
-                    {userName || 'admin'}
+                    <span className="user-pill">{userName || 'admin'}</span>
                     {onLogout && (
                         <>
                             <span className="divider" />
@@ -51,7 +57,7 @@ export function AppShell({
 
             <div className="workspace">
                 <aside className="sidebar">
-                    <div className="sidebar-title">功能菜单</div>
+                    <div className="sidebar-title">设备功能</div>
                     {navItems.map((item, index) => {
                         const previous = navItems[index - 1];
                         const showGroup =

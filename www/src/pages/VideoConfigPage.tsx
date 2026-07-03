@@ -4,6 +4,7 @@ import { isStreamSupported } from '../api/resolution';
 import { cloneDefaultConfig } from '../api/configDefaults';
 import { mockVideoConfig } from '../api/mockVideo';
 import type { StreamName, VideoStreamConfig } from '../api/types';
+import { ConfigActionBar } from '../components/ConfigActionBar';
 import { VideoPreview } from '../components/VideoPreview';
 import { VideoRegionDrawLayer } from '../components/VideoRegionDrawLayer';
 import { useVideoConfig } from '../hooks/useVideoConfig';
@@ -181,26 +182,19 @@ export function VideoConfigPage() {
                         {capabilitiesError || '媒体能力加载中'}
                     </div>
                 )}
-                <div className="form-actions">
-                    <button type="button" onClick={resetDefault}>
-                        恢复默认
-                    </button>
-                    <button
-                        type="button"
-                        className="primary"
-                        disabled={!allSupported || saving}
-                        onClick={() => void saveConfig()}
-                    >
-                        {saving ? '保存中' : '保存'}
-                    </button>
-                </div>
+                <ConfigActionBar
+                    canSave={allSupported}
+                    error={error}
+                    message={saved}
+                    onReset={resetDefault}
+                    onSave={() => void saveConfig()}
+                    saving={saving}
+                />
                 {activeCapabilities !== null && !activeSupported && (
                     <div className="save-hint">
                         当前码流包含设备不支持的参数。
                     </div>
                 )}
-                {saved && <div className="save-hint">{saved}</div>}
-                {error && <div className="status-note error-note">{error}</div>}
                 {activeCapabilities !== null && capabilitiesError && (
                     <div className="status-note error-note">
                         {capabilitiesError}

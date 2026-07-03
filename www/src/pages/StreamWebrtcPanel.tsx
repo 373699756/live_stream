@@ -7,7 +7,7 @@ interface StreamWebrtcPanelProps {
 }
 
 function readyStatusText(value: boolean | undefined) {
-    return value ? 'ready' : 'not ready';
+    return value ? '就绪' : '未就绪';
 }
 
 function webrtcPortRange(sessionSummary: MediaSessionSummary) {
@@ -34,8 +34,8 @@ export function StreamWebrtcPanel({ sessionSummary }: StreamWebrtcPanelProps) {
                     <span>服务</span>
                     <strong>
                         {sessionSummary.webrtc_enabled
-                            ? 'enabled'
-                            : 'disabled'}
+                            ? '已启用'
+                            : '未启用'}
                     </strong>
                 </div>
                 <div>

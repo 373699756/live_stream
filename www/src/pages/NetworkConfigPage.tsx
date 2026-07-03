@@ -1,5 +1,6 @@
 import { useNetworkConfig } from '../hooks/useNetworkConfig';
 import { useWebrtcConfig } from '../hooks/useWebrtcConfig';
+import { ConfigActionBar } from '../components/ConfigActionBar';
 import { FormField } from '../components/FormField';
 
 export function NetworkConfigPage() {
@@ -94,21 +95,13 @@ export function NetworkConfigPage() {
                         </FormField>
                     ))}
                 </div>
-                <div className="form-actions">
-                    <button type="button" onClick={reset}>
-                        恢复默认
-                    </button>
-                    <button
-                        type="button"
-                        className="primary"
-                        disabled={saving}
-                        onClick={() => void save()}
-                    >
-                        {saving ? '保存中' : '保存'}
-                    </button>
-                </div>
-                {savedMsg && <div className="save-hint">{savedMsg}</div>}
-                {error && <div className="status-note error-note">{error}</div>}
+                <ConfigActionBar
+                    error={error}
+                    message={savedMsg}
+                    onReset={reset}
+                    onSave={() => void save()}
+                    saving={saving}
+                />
             </section>
 
             <section className="panel">
@@ -204,22 +197,13 @@ export function NetworkConfigPage() {
                         Math.max(webrtcConfig.max_peers - 1, 0)}
                     ；HTTP/HTTPS 管理口也必须外网可访问。
                 </div>
-                <div className="form-actions">
-                    <button
-                        type="button"
-                        className="primary"
-                        disabled={webrtcSaving}
-                        onClick={() => void saveWebrtc()}
-                    >
-                        {webrtcSaving ? '保存中' : '保存 WebRTC'}
-                    </button>
-                </div>
-                {webrtcMsg && (
-                    <div className="save-hint">{webrtcMsg}</div>
-                )}
-                {webrtcError && (
-                    <div className="status-note error-note">{webrtcError}</div>
-                )}
+                <ConfigActionBar
+                    error={webrtcError}
+                    message={webrtcMsg}
+                    onSave={() => void saveWebrtc()}
+                    saveLabel="保存 WebRTC"
+                    saving={webrtcSaving}
+                />
             </section>
         </div>
     );

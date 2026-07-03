@@ -24,40 +24,34 @@ interface StreamProtocolPanelProps {
 }
 
 function readyText(value: boolean | undefined) {
-    return value ? 'ready' : 'not ready';
+    return value ? '就绪' : '未就绪';
 }
 
 function protocolReady(streamInfo: MediaStreamInfo, protocol: string) {
     if (protocol === 'HLS') {
-        return [
-            readyText(streamInfo.hls_ready),
-            streamInfo.hls_supported ? 'supported' : 'unsupported',
-        ].join(' / ');
+        return streamInfo.hls_supported
+            ? readyText(streamInfo.hls_ready)
+            : '不支持';
     }
     if (protocol === 'HTTP-FLV') {
-        return [
-            readyText(streamInfo.http_flv_ready),
-            streamInfo.http_flv_supported ? 'supported' : 'unsupported',
-        ].join(' / ');
+        return streamInfo.http_flv_supported
+            ? readyText(streamInfo.http_flv_ready)
+            : '不支持';
     }
     if (protocol === 'MJPEG') {
-        return [
-            readyText(streamInfo.mjpeg_ready),
-            streamInfo.mjpeg_supported ? 'supported' : 'unsupported',
-        ].join(' / ');
+        return streamInfo.mjpeg_supported
+            ? readyText(streamInfo.mjpeg_ready)
+            : '不支持';
     }
     if (protocol === 'WebRTC') {
-        return [
-            readyText(streamInfo.webrtc_ready),
-            streamInfo.webrtc_supported ? 'supported' : 'unsupported',
-        ].join(' / ');
+        return streamInfo.webrtc_supported
+            ? readyText(streamInfo.webrtc_ready)
+            : '不支持';
     }
     if (protocol === 'RTSP') {
-        return streamInfo.track_ready === true
-            ? 'track ready'
-            : 'track not ready';
+        return streamInfo.track_ready === true ? '轨道就绪' : '轨道未就绪';
     }
-    return streamInfo.running === true ? 'available' : 'not running';
+    return streamInfo.running === true ? '可用' : '未运行';
 }
 
 function protocolActiveSize(
@@ -106,12 +100,19 @@ export function StreamProtocolPanel({
     urlsByStream,
     sessions,
 }: StreamProtocolPanelProps) {
+    const copyUrl = (url: string) => {
+        if (!url || !navigator.clipboard) {
+            return;
+        }
+        void navigator.clipboard.writeText(url);
+    };
+
     return (
         <section className="panel wide-panel stream-protocol-panel">
             <div className="page-heading">
                 <div>
                     <h2>访问地址与协议状态</h2>
-                    <p>后端生成的访问地址、协议 ready 和活动会话数</p>
+                    <p>后端生成的访问地址、协议就绪状态和活动会话数</p>
                 </div>
             </div>
             <div className="stream-protocol-grid">
@@ -142,9 +143,30 @@ export function StreamProtocolPanel({
                                         key={row.label}
                                     >
                                         <span>{row.label}</span>
-                                        <code>{row.url || 'unavailable'}</code>
-                                        <em>{row.ready}</em>
+                                        <code>{row.url || '地址不可用'}</code>
+                                        <em
+                                            className={
+                                                row.ready.includes('不支持') ||
+                                                row.ready.includes('未')
+                                                    ? 'protocol-state muted'
+                                                    : 'protocol-state ready'
+                                            }
+                                        >
+                                            {row.ready}
+                                        </em>
                                         <strong>{row.activeSize}</strong>
+                                        <button
+                                            type="button"
+                                            disabled={!row.url}
+                                            title={
+                                                row.url
+                                                    ? '复制访问地址'
+                                                    : '地址不可用'
+                                            }
+                                            onClick={() => copyUrl(row.url)}
+                                        >
+                                            复制
+                                        </button>
                                     </div>
                                 ))}
                             </div>

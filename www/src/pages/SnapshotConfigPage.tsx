@@ -1,4 +1,5 @@
 import { useSnapshotConfig } from '../hooks/useSnapshotConfig';
+import { ConfigActionBar } from '../components/ConfigActionBar';
 import { FormField } from '../components/FormField';
 
 export function SnapshotConfigPage() {
@@ -71,21 +72,13 @@ export function SnapshotConfigPage() {
                     </FormField>
                 </div>
 
-                <div className="form-actions">
-                    <button type="button" onClick={reset}>
-                        恢复默认
-                    </button>
-                    <button
-                        type="button"
-                        className="primary"
-                        disabled={saving}
-                        onClick={() => void save()}
-                    >
-                        {saving ? '保存中' : '保存'}
-                    </button>
-                </div>
-                {savedMsg && <div className="save-hint">{savedMsg}</div>}
-                {error && <div className="status-note error-note">{error}</div>}
+                <ConfigActionBar
+                    error={error}
+                    message={savedMsg}
+                    onReset={reset}
+                    onSave={() => void save()}
+                    saving={saving}
+                />
             </section>
         </div>
     );

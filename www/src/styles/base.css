@@ -11,6 +11,9 @@
     --border: #d7dde7;
     --panel: #ffffff;
     --muted: #64748b;
+    --soft-panel: #f8fafc;
+    --soft-border: #e2e8f0;
+    --text-strong: #172033;
     --success: #1f9d55;
     --warning: #b7791f;
     --danger: #d14343;
@@ -73,6 +76,14 @@ button {
 .button-like:hover,
 button:hover {
     border-color: var(--brand);
+}
+
+button:disabled,
+.button-like[aria-disabled='true'] {
+    color: #8a97aa;
+    cursor: not-allowed;
+    background: #f3f6fa;
+    border-color: #d7dee8;
 }
 
 .divider {

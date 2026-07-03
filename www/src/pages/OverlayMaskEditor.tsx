@@ -191,24 +191,39 @@ export function useOverlayMaskEditor({
                 <span>w {activeMask.width}</span>
                 <span>h {activeMask.height}</span>
             </div>
-            <div className="form-actions">
-                <button type="button" onClick={onClearCurrent}>
-                    清除当前
-                </button>
-                <button type="button" onClick={reset}>
-                    恢复默认
-                </button>
-                <button
-                    type="button"
-                    className="primary"
-                    disabled={saving}
-                    onClick={() => void save()}
-                >
-                    {saving ? '设置中' : '完成'}
-                </button>
+            <div className="config-action-area mask-action-area">
+                <div className="config-action-status">
+                    {error ? (
+                        <span className="action-status action-status-error">
+                            {error}
+                        </span>
+                    ) : savedMsg ? (
+                        <span className="action-status action-status-info">
+                            {savedMsg}
+                        </span>
+                    ) : (
+                        <span className="action-status action-status-muted">
+                            在右侧画面拖拽绘制遮挡区域
+                        </span>
+                    )}
+                </div>
+                <div className="config-action-buttons">
+                    <button type="button" onClick={onClearCurrent}>
+                        清除当前
+                    </button>
+                    <button type="button" onClick={reset}>
+                        恢复默认
+                    </button>
+                    <button
+                        type="button"
+                        className="primary"
+                        disabled={saving}
+                        onClick={() => void save()}
+                    >
+                        {saving ? '设置中' : '完成'}
+                    </button>
+                </div>
             </div>
-            {savedMsg && <div className="save-hint">{savedMsg}</div>}
-            {error && <div className="status-note error-note">{error}</div>}
         </div>
     );
 

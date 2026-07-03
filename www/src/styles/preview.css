@@ -18,6 +18,10 @@
     background: #182235;
 }
 
+.preview-toolbar {
+    align-items: stretch;
+}
+
 .preview-footer {
     justify-content: flex-start;
     font-size: 13px;
@@ -30,6 +34,32 @@
     border: 1px solid #334155;
     border-radius: 4px;
     overflow: hidden;
+}
+
+.preview-toolbar-group {
+    min-width: 0;
+    display: grid;
+    gap: 5px;
+}
+
+.stream-toolbar-group {
+    flex: 0 1 auto;
+}
+
+.preview-toolbar-right {
+    min-width: 0;
+    display: flex;
+    align-items: end;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.preview-toolbar-label {
+    color: #7f90aa;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0;
 }
 
 .segmented button,
@@ -107,6 +137,59 @@
     gap: 6px;
     flex-wrap: wrap;
     justify-content: flex-end;
+}
+
+.protocol-actions {
+    border: 1px solid #334155;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.protocol-actions button {
+    min-width: 74px;
+}
+
+.preview-command-actions button {
+    border-radius: 4px;
+}
+
+.config-preview-layout .preview-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.config-preview-layout .preview-toolbar-right,
+.config-preview-layout .preview-toolbar-group,
+.config-preview-layout .stream-switcher,
+.config-preview-layout .preview-actions {
+    width: 100%;
+}
+
+.config-preview-layout .preview-toolbar-right {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+}
+
+.config-preview-layout .stream-switcher button {
+    min-width: 0;
+}
+
+.config-preview-layout .stream-switcher em {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.config-preview-layout .protocol-actions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.config-preview-layout .protocol-actions button {
+    min-width: 0;
+    padding-right: 8px;
+    padding-left: 8px;
 }
 
 .video-surface {

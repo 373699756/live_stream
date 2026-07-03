@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useImageConfig } from '../hooks/useImageConfig';
 import type { ImageCapabilities, StreamName } from '../api/types';
+import { ConfigActionBar } from '../components/ConfigActionBar';
 import { VideoPreview } from '../components/VideoPreview';
 import { ImageAdvancedSettings } from './ImageAdvancedSettings';
 import { ImagePrimarySettings } from './ImagePrimarySettings';
@@ -119,21 +120,14 @@ export function ImageConfigPage() {
                         {capabilitiesError || '媒体能力加载中'}
                     </div>
                 )}
-                <div className="form-actions">
-                    <button type="button" onClick={reset}>
-                        恢复默认
-                    </button>
-                    <button
-                        type="button"
-                        className="primary"
-                        disabled={saving || !capabilities}
-                        onClick={() => void save(config)}
-                    >
-                        {saving ? '保存中' : '保存'}
-                    </button>
-                </div>
-                {savedMsg && <div className="save-hint">{savedMsg}</div>}
-                {error && <div className="status-note error-note">{error}</div>}
+                <ConfigActionBar
+                    canSave={Boolean(capabilities)}
+                    error={error}
+                    message={savedMsg}
+                    onReset={reset}
+                    onSave={() => void save(config)}
+                    saving={saving}
+                />
             </section>
             <VideoPreview
                 stream={previewStream}
